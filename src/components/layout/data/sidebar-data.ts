@@ -4,11 +4,16 @@ import {
   History,
 
   Calendar,
+  Clock,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
 export const sidebarData: SidebarData = {
-
+  user: {
+    name: 'Admin',
+    email: 'admin@isi.tn',
+    avatar: '/avatars/default.png',
+  },
   teams: [
 
   ],
@@ -20,12 +25,17 @@ export const sidebarData: SidebarData = {
           title: 'Dashboard',
           url: '/',
           icon: LayoutDashboard,
+        },{
+          title: 'Gestion Heures par Grade', // ⭐ NOUVEAU
+          url: '/grade-hours',
+          icon: Clock,
         },
         {
           title: 'Planning Surveillance', // ⭐ NOUVEAU
           url: '/planning',
           icon: Calendar,
         },
+
         {
           title: 'Historique', // ⭐ NOUVEAU
           url: '/history',

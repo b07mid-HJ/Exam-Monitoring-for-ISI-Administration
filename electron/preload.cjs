@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Sauvegarde des résultats
   saveResultsFile: () => ipcRenderer.invoke('save-results-file'),
 
+  // Analyse des surveillances
+  analyzeSurveillanceData: (data) => ipcRenderer.invoke('analyze-surveillance-data', data),
+
   // Écoute des logs Python en temps réel
   onPythonLog: (callback) => {
     ipcRenderer.on('python-log', (event, data) => callback(data));

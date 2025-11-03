@@ -811,7 +811,6 @@ if __name__ == "__main__":
         "AS": 12.0,    # Assistant
         "PTC": 13.5,   # PTC
         "PES": 13.5,   # PES
-        "VA": 6.0,    # Vacataire
         "V": 6.0,     # Vacataire
         "EX": 4.5     # External
     }

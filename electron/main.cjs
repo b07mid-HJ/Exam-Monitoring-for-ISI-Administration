@@ -312,6 +312,98 @@ ipcMain.handle('save-results-file', async (event) => {
 });
 
 // ============================================================================
+// ANALYSE DES SURVEILLANCES
+// ============================================================================
+
+ipcMain.handle('analyze-surveillance-data', async (event, { professorsFile, planningFile, ecart_1_2, ecart_2_3, ecart_3_4 }) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const pythonExec = getPythonExecutable('analyze_surveillance');
+
+      // Vérification
+      if (!fsSync.existsSync(pythonExec.command)) {
+        const errorMsg = isDev
+          ? 'Python environment not found. Please create virtual environment.'
+          : `Python executable not found at: ${pythonExec.command}`;
+        reject(new Error(errorMsg));
+        return;
+      }
+
+      console.log('Running surveillance analysis...');
+      console.log('Command:', pythonExec.command);
+      console.log('Professors file:', professorsFile);
+      console.log('Planning file:', planningFile);
+      console.log('Custom ecarts:', { ecart_1_2, ecart_2_3, ecart_3_4 });
+
+      // Préparer les arguments
+      const args = [...pythonExec.args, professorsFile, planningFile];
+      
+      // Ajouter les écarts personnalisés s'ils sont fournis
+      if (ecart_1_2 !== undefined && ecart_1_2 !== null) {
+        args.push(ecart_1_2.toString());
+      } else {
+        args.push('null');
+      }
+      
+      if (ecart_2_3 !== undefined && ecart_2_3 !== null) {
+        args.push(ecart_2_3.toString());
+      } else {
+        args.push('null');
+      }
+      
+      if (ecart_3_4 !== undefined && ecart_3_4 !== null) {
+        args.push(ecart_3_4.toString());
+      } else {
+        args.push('null');
+      }
+
+      console.log('🔧 Python command args:', args);
+
+      const pythonProcess = spawn(pythonExec.command, args, {
+        cwd: appDirs.pythonWorkspaceDir,
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      pythonProcess.stdout.on('data', (data) => {
+        const text = data.toString();
+        output += text;
+        console.log('Python Analysis:', text);
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        const text = data.toString();
+        errorOutput += text;
+        console.error('Python Analysis Error:', text);
+      });
+
+      pythonProcess.on('close', (code) => {
+        console.log(`Python analysis process exited with code ${code}`);
+
+        if (code === 0) {
+          try {
+            const result = JSON.parse(output);
+            resolve(result);
+          } catch (parseError) {
+            reject(new Error(`Failed to parse Python output: ${parseError.message}`));
+          }
+        } else {
+          reject(new Error(`Python analysis failed: ${errorOutput}`));
+        }
+      });
+
+      pythonProcess.on('error', (error) => {
+        reject(new Error(`Failed to start analysis: ${error.message}`));
+      });
+
+    } catch (error) {
+      reject(new Error(`Setup error: ${error.message}`));
+    }
+  });
+});
+
+// ============================================================================
 // GESTION DE L'HISTORIQUE (BASE DE DONNÉES)
 // ============================================================================
 

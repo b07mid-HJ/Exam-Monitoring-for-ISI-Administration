@@ -40,8 +40,7 @@ const DEFAULT_GRADE_HOURS: Record<string, number> = {
         AS: 12.0,    
         PTC: 13.5,   
         PES: 13.5,   
-        VA: 6.0, 
-        V: 6.0,     
+        V: 6.0,
         EX: 4.5    
     }
 

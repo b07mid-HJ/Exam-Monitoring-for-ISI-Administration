@@ -31,6 +31,7 @@ import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedPlanningIndexRouteImport } from './routes/_authenticated/planning/index'
 import { Route as AuthenticatedHistoryIndexRouteImport } from './routes/_authenticated/history/index'
 import { Route as AuthenticatedHelpCenterIndexRouteImport } from './routes/_authenticated/help-center/index'
+import { Route as AuthenticatedGradeHoursIndexRouteImport } from './routes/_authenticated/grade-hours/index'
 import { Route as AuthenticatedChatsIndexRouteImport } from './routes/_authenticated/chats/index'
 import { Route as AuthenticatedAppsIndexRouteImport } from './routes/_authenticated/apps/index'
 import { Route as AuthenticatedAffectationManuelleIndexRouteImport } from './routes/_authenticated/AffectationManuelle/index'
@@ -157,6 +158,12 @@ const AuthenticatedHelpCenterIndexRoute =
     path: '/help-center/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedGradeHoursIndexRoute =
+  AuthenticatedGradeHoursIndexRouteImport.update({
+    id: '/grade-hours/',
+    path: '/grade-hours/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedChatsIndexRoute = AuthenticatedChatsIndexRouteImport.update({
   id: '/chats/',
   path: '/chats/',
@@ -259,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/AffectationManuelle': typeof AuthenticatedAffectationManuelleIndexRoute
   '/apps': typeof AuthenticatedAppsIndexRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
+  '/grade-hours': typeof AuthenticatedGradeHoursIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/history': typeof AuthenticatedHistoryIndexRoute
   '/planning': typeof AuthenticatedPlanningIndexRoute
@@ -292,6 +300,7 @@ export interface FileRoutesByTo {
   '/AffectationManuelle': typeof AuthenticatedAffectationManuelleIndexRoute
   '/apps': typeof AuthenticatedAppsIndexRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
+  '/grade-hours': typeof AuthenticatedGradeHoursIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/history': typeof AuthenticatedHistoryIndexRoute
   '/planning': typeof AuthenticatedPlanningIndexRoute
@@ -330,6 +339,7 @@ export interface FileRoutesById {
   '/_authenticated/AffectationManuelle/': typeof AuthenticatedAffectationManuelleIndexRoute
   '/_authenticated/apps/': typeof AuthenticatedAppsIndexRoute
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
+  '/_authenticated/grade-hours/': typeof AuthenticatedGradeHoursIndexRoute
   '/_authenticated/help-center/': typeof AuthenticatedHelpCenterIndexRoute
   '/_authenticated/history/': typeof AuthenticatedHistoryIndexRoute
   '/_authenticated/planning/': typeof AuthenticatedPlanningIndexRoute
@@ -366,6 +376,7 @@ export interface FileRouteTypes {
     | '/AffectationManuelle'
     | '/apps'
     | '/chats'
+    | '/grade-hours'
     | '/help-center'
     | '/history'
     | '/planning'
@@ -399,6 +410,7 @@ export interface FileRouteTypes {
     | '/AffectationManuelle'
     | '/apps'
     | '/chats'
+    | '/grade-hours'
     | '/help-center'
     | '/history'
     | '/planning'
@@ -436,6 +448,7 @@ export interface FileRouteTypes {
     | '/_authenticated/AffectationManuelle/'
     | '/_authenticated/apps/'
     | '/_authenticated/chats/'
+    | '/_authenticated/grade-hours/'
     | '/_authenticated/help-center/'
     | '/_authenticated/history/'
     | '/_authenticated/planning/'
@@ -615,6 +628,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHelpCenterIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/grade-hours/': {
+      id: '/_authenticated/grade-hours/'
+      path: '/grade-hours'
+      fullPath: '/grade-hours'
+      preLoaderRoute: typeof AuthenticatedGradeHoursIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/chats/': {
       id: '/_authenticated/chats/'
       path: '/chats'
@@ -741,6 +761,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAffectationManuelleIndexRoute: typeof AuthenticatedAffectationManuelleIndexRoute
   AuthenticatedAppsIndexRoute: typeof AuthenticatedAppsIndexRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
+  AuthenticatedGradeHoursIndexRoute: typeof AuthenticatedGradeHoursIndexRoute
   AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute
   AuthenticatedHistoryIndexRoute: typeof AuthenticatedHistoryIndexRoute
   AuthenticatedPlanningIndexRoute: typeof AuthenticatedPlanningIndexRoute
@@ -759,6 +780,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedAffectationManuelleIndexRoute,
   AuthenticatedAppsIndexRoute: AuthenticatedAppsIndexRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
+  AuthenticatedGradeHoursIndexRoute: AuthenticatedGradeHoursIndexRoute,
   AuthenticatedHelpCenterIndexRoute: AuthenticatedHelpCenterIndexRoute,
   AuthenticatedHistoryIndexRoute: AuthenticatedHistoryIndexRoute,
   AuthenticatedPlanningIndexRoute: AuthenticatedPlanningIndexRoute,

@@ -168,7 +168,6 @@ export function CalendarView({ data }: CalendarViewProps) {
       PTC: 'bg-cyan-500',
       PES: 'bg-indigo-500',
       V: 'bg-gray-500',
-      VA: 'bg-gray-500',
       EX: 'bg-slate-500',
     };
     return colors[grade] || 'bg-gray-400';
