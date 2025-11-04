@@ -104,11 +104,17 @@ export default function HistoryPage() {
   };
 
   const getSessionTypeColor = (type: string) => {
-    return type === 'principale'
-      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-      : 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+    switch (type) {
+      case 'principale':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case 'rattrapage':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      case 'partiel':
+        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+    }
   };
-
   const getSemesterColor = (semester: string) => {
     return semester === 'S1'
       ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
@@ -160,7 +166,13 @@ export default function HistoryPage() {
                   <h3 className="font-semibold text-lg mb-2">{session.name}</h3>
                   <div className="flex gap-2 flex-wrap">
                     <Badge className={getSessionTypeColor(session.session_type)}>
-                      {session.session_type === 'principale' ? 'Principale' : 'Rattrapage'}
+                      {session.session_type === 'principale'
+                        ? 'Principale'
+                        : session.session_type === 'rattrapage'
+                          ? 'Rattrapage'
+                          : session.session_type === 'partiel'
+                            ? 'Partiel'
+                            : 'Autre'}
                     </Badge>
                     <Badge className={getSemesterColor(session.semester)}>
                       {session.semester}
