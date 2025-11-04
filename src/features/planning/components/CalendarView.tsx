@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -137,6 +138,14 @@ export function CalendarView({ data }: CalendarViewProps) {
     };
   };
 
+  const handleDeclareAbsence = (teacherId: string) => {
+    // Ici, vous pouvez ajouter la logique pour déclarer l'enseignant comme absent
+    // Par exemple, appeler une API ou mettre à jour l'état local
+    console.log(`Déclarer l'enseignant ${teacherId} comme absent`);
+    // Afficher une notification ou une confirmation à l'utilisateur
+    alert(`L'enseignant a été marqué comme absent pour cette séance.`);
+  };
+
   const handleCellClick = (day: number, session: string) => {
     const sessionInfo = getSessionData(day, session);
     if (sessionInfo) {
@@ -177,8 +186,22 @@ export function CalendarView({ data }: CalendarViewProps) {
 
   const uniqueDays = daysData.map((d) => d.dayNumber);
 
+  const handleExportCredits = () => {
+    // Fonction à implémenter pour l'export des crédits
+    alert("Fonctionnalité d'export des crédits à implémenter");
+  };
+
   return (
     <>
+      <div className="flex justify-end mb-4">
+        <Button 
+          onClick={handleExportCredits}
+          variant="outline"
+          className="bg-blue-600 text-white hover:bg-blue-700"
+        >
+          Exporter fichier de crédit
+        </Button>
+      </div>
       <Card className="p-4 overflow-x-auto">
         <div className="min-w-[800px]">
           <div
@@ -343,7 +366,7 @@ export function CalendarView({ data }: CalendarViewProps) {
                         </div>
                       </div>
 
-                      <div className="space-y-2 pt-2 border-t">
+                      <div className="space-y-3 pt-2 border-t">
                         <div className="flex items-center gap-2 text-sm">
                           <Mail className="h-4 w-4 text-muted-foreground" />
                           <span className="text-muted-foreground">Email :</span>
@@ -354,6 +377,19 @@ export function CalendarView({ data }: CalendarViewProps) {
                             {teacher.email || 'Non renseigné'}
                           </a>
                         </div>
+                        <div className="flex justify-end">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    className="text-red-600 border-red-300 hover:bg-red-50"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeclareAbsence(teacher.id);
+                                    }}
+                                  >
+                                    Déclarer absent
+                                  </Button>
+                                </div>
                       </div>
                     </div>
                   </Card>

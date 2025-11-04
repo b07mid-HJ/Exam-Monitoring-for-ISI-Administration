@@ -127,47 +127,56 @@ class CalculateurSurveillances:
 
         return surveillances
 
-    def _calculer_indisponibilites(self, surveillances_par_grade: Dict[str, int]) -> Dict[str, int]:
+    def _calculer_indisponibilites(self, surveillances_par_grade: Dict[str, float]) -> Dict[str, int]:
         """
         Calcule le nombre de créneaux d'indisponibilité autorisés par grade.
-
-        Principe: Relation inversement proportionnelle avec les surveillances.
-        Plus un grade a de surveillances, moins il peut être indisponible.
+        
+        Principe: 
+        - Les grades avec plus de surveillances ne peuvent pas avoir plus d'indisponibilités
+          que ceux qui en ont moins.
+        - Le nombre d'indisponibilités est inversement proportionnel aux surveillances.
         """
-        indisponibilites = {}
-
         if not surveillances_par_grade:
-            return indisponibilites
-
-        # Trouver le min et max de surveillances pour normaliser
-        min_surveillances = min(surveillances_par_grade.values())
-        max_surveillances = max(surveillances_par_grade.values())
-
+            return {}
+            
+        # Trier les grades par ordre décroissant de surveillances
+        grades_tries = sorted(surveillances_par_grade.items(), 
+                            key=lambda x: x[1], 
+                            reverse=True)
+        
         # Définir les bornes pour les indisponibilités
-        # Celui qui a le plus de surveillances aura le moins d'indisponibilités
-        min_indispo = max(2, math.floor(self.nb_creneaux_total * 0.10))  # Min 10% ou 2
-        max_indispo = math.floor(self.nb_creneaux_total * 0.40)  # Max 40%
-
-        for grade, nb_surveillances in surveillances_par_grade.items():
-            if max_surveillances == min_surveillances:
-                # Tous les grades ont le même nombre de surveillances
-                nb_indispo = (min_indispo + max_indispo) // 2
+        min_indispo = max(3, math.floor(self.nb_creneaux_total * 0.15))  # Min 15% ou 3
+        max_indispo = math.floor(self.nb_creneaux_total * 0.50)  # Max 50%
+        
+        indisponibilites = {}
+        prev_surveillances = None
+        prev_indispo = None
+        
+        for grade, nb_surveillances in grades_tries:
+            # Pour le premier grade (celui avec le plus de surveillances)
+            if prev_surveillances is None:
+                nb_indispo = min_indispo
+            # Si même nombre de surveillances que le précédent, même nombre d'indisponibilités
+            elif nb_surveillances == prev_surveillances:
+                nb_indispo = prev_indispo
+            # Si moins de surveillances, on peut avoir plus d'indisponibilités
             else:
-                # Interpolation linéaire inverse
-                # Plus de surveillances → moins d'indisponibilités
-                ratio = (nb_surveillances - min_surveillances) / (max_surveillances - min_surveillances)
-                nb_indispo = max_indispo - ratio * (max_indispo - min_indispo)
-                nb_indispo = round(nb_indispo)
-
-            # Vérifier que le nombre d'indisponibilités laisse assez de créneaux disponibles
-            # On doit garantir: nb_creneaux_disponibles >= nb_surveillances * 1.5 (marge de 50%)
-            creneaux_necessaires = math.ceil(nb_surveillances * 1.5)
+                nb_indispo = min(prev_indispo + 1, max_indispo)
+            
+            # Vérifier la contrainte de créneaux disponibles
+            creneaux_necessaires = math.ceil(nb_surveillances * 1.05)
             indispo_max_possible = self.nb_creneaux_total - creneaux_necessaires
-
+            
+            # Ajuster si nécessaire
             nb_indispo = min(nb_indispo, indispo_max_possible)
             nb_indispo = max(min_indispo, nb_indispo)  # Toujours au moins le minimum
-            indisponibilites[grade] = int(round(nb_indispo))
-
+            
+            # Mettre à jour pour l'itération suivante
+            prev_surveillances = nb_surveillances
+            prev_indispo = nb_indispo
+            
+            indisponibilites[grade] = int(round(nb_indispo*1.4))
+        
         return indisponibilites
 
 
