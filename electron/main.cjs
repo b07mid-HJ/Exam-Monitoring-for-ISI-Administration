@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const { initDatabase, getDatabase, closeDatabase } = require('./database.cjs');
+const { sendEmails } = require('./server.cjs');
 
 let mainWindow;
 const isDev = process.env.NODE_ENV === 'development';
@@ -214,7 +215,38 @@ app.on('activate', () => {
   }
 });
 
+// Handle sending emails to multiple teachers
+ipcMain.handle('send-emails', async (_, teachers) => {
+  try {
+    if (!Array.isArray(teachers) || teachers.length === 0) {
+      throw new Error('No teachers provided');
+    }
 
+    console.log(`Starting to send emails to ${teachers.length} teachers`);
+    
+    // Call the sendEmails function from server.cjs
+    const result = await sendEmails(teachers);
+    
+    console.log('Email sending result:', result);
+    
+    if (result.success) {
+      return { 
+        success: true, 
+        sentCount: result.summary?.successful || 0,
+        failedCount: result.summary?.failed || 0,
+        summary: result.summary
+      };
+    } else {
+      throw new Error(result.error || 'Failed to send emails');
+    }
+  } catch (error) {
+    console.error('Error in send-emails handler:', error);
+    return { 
+      success: false, 
+      error: error.message || 'An error occurred while sending emails' 
+    };
+  }
+});
 // ✅ Nouvelles fonctions de chemin
 const getPythonExecutable = (scriptName) => {
   if (isDev) {

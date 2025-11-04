@@ -16,6 +16,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { Label } from '@/components/ui/label.tsx'
 import { Input } from '@/components/ui/input.tsx'
+import { SendMail } from './components/SendMail';
 
 interface PlanningRow {
   Date: string;
@@ -317,7 +318,13 @@ export default function PlanningPage() {
 
             <div className="flex flex-wrap gap-2">
               <ViewToggle view={viewMode} onViewChange={setViewMode} />
-              {viewMode === 'calendar' && <ExportCalendarButton disabled={!result?.success} />}
+               <ViewToggle view={viewMode} onViewChange={setViewMode} />
+              {viewMode === 'calendar' && (
+                <>
+                  <ExportCalendarButton disabled={!result?.success} />
+                  <SendMail planningData={planningData} disabled={!result?.success} />
+                </>
+              )}
               <SaveSessionDialog planningData={planningData} wishesFile={files.wishes} disabled={!result?.success} />
               <ExportButtons disabled={!result?.success} />
             </div>
