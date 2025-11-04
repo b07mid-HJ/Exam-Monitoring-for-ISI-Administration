@@ -107,6 +107,7 @@ export default function GradeHoursPage() {
               data={gradeHoursData}
               onBack={() => setActiveTab('upload')}
               onRegenerate={handleRegenerate}
+              uploadedFiles={uploadedFiles}
               isLoading={isLoading}
             />
           </TabsContent>

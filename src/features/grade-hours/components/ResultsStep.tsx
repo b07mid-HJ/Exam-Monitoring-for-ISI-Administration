@@ -27,10 +27,11 @@ interface ResultsStepProps {
   data: GradeHoursData | null
   onBack: () => void
   onRegenerate: (newEcarts: Ecarts) => void
+  uploadedFiles: { professorsFile: string; planningFile: string } | null
   isLoading?: boolean
 }
 
-export function ResultsStep({ data, onBack, onRegenerate, isLoading }: ResultsStepProps) {
+export function ResultsStep({ data, onBack, onRegenerate, uploadedFiles, isLoading }: ResultsStepProps) {
   const [showValidationDialog, setShowValidationDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
 
@@ -38,10 +39,54 @@ export function ResultsStep({ data, onBack, onRegenerate, isLoading }: ResultsSt
     setShowValidationDialog(true)
   }
 
-  const handleConfirmValidation = () => {
-    // TODO: Appeler l'API pour sauvegarder la configuration finale
-    console.log('Validation confirmée:', data)
-    setShowValidationDialog(false)
+  const handleConfirmValidation = async () => {
+    if (!data) {
+      alert('Aucune donnée à sauvegarder')
+      return
+    }
+
+    if (!uploadedFiles) {
+      alert('Fichiers non trouvés. Veuillez recommencer l\'import.')
+      return
+    }
+
+    try {
+      // Vérifier que l'API est disponible
+      if (!window.electronAPI || typeof window.electronAPI.saveGradeHours !== 'function') {
+        throw new Error('L\'API Electron n\'est pas disponible.')
+      }
+
+      // Sauvegarder les heures par grade ET les fichiers dans la DB
+      const result = await window.electronAPI.saveGradeHours({
+        gradeHoursData: data,
+        professorsFile: uploadedFiles.professorsFile,
+        planningFile: uploadedFiles.planningFile
+      })
+
+      if (result.success) {
+        console.log('✅ Heures par grade sauvegardées:', result)
+        
+        // Afficher un message de succès détaillé
+        const gradesList = data.grades
+          .map(g => `${g.grade}: ${g.surveillances_par_prof}h`)
+          .join('\n')
+        
+        alert(
+          `✅ Configuration enregistrée avec succès !\n\n` +
+          `Fichier: ${result.path}\n\n` +
+          `Données sauvegardées:\n` +
+          `- ${result.stats?.enseignants || 0} enseignants\n` +
+          `- ${result.stats?.examens || 0} examens\n\n` +
+          `Heures par grade:\n${gradesList}`
+        )
+        setShowValidationDialog(false)
+      } else {
+        throw new Error(result.error || 'Erreur lors de la sauvegarde')
+      }
+    } catch (error: any) {
+      console.error('❌ Error saving grade hours:', error)
+      alert(`❌ Erreur lors de la sauvegarde:\n\n${error?.message || 'Une erreur est survenue'}`)
+    }
   }
 
   if (!data) {

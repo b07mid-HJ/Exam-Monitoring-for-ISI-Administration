@@ -403,6 +403,277 @@ ipcMain.handle('analyze-surveillance-data', async (event, { professorsFile, plan
   });
 });
 
+// Exporter les données de la DB vers des fichiers Excel temporaires
+ipcMain.handle('export-db-to-files', async () => {
+  try {
+    const db = getDatabase();
+    const ExcelJS = require('exceljs');
+    const tempDir = path.join(app.getPath('userData'), 'temp');
+    
+    // Créer le dossier temp s'il n'existe pas
+    if (!fsSync.existsSync(tempDir)) {
+      fsSync.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // 1. Exporter les enseignants
+    const enseignants = db.prepare('SELECT * FROM enseignants').all();
+    
+    if (enseignants.length === 0) {
+      return {
+        success: false,
+        error: 'Aucun enseignant trouvé dans la base de données. Veuillez d\'abord sauvegarder les données depuis "Analyse des Surveillances".'
+      };
+    }
+    
+    const workbookProfs = new ExcelJS.Workbook();
+    const worksheetProfs = workbookProfs.addWorksheet('Enseignants');
+    
+    // En-têtes
+    worksheetProfs.columns = [
+      { header: 'nom_ens', key: 'nom_ens', width: 20 },
+      { header: 'prenom_ens', key: 'prenom_ens', width: 20 },
+      { header: 'abrv_ens', key: 'abrv_ens', width: 15 },
+      { header: 'email_ens', key: 'email_ens', width: 30 },
+      { header: 'grade_code_ens', key: 'grade_code_ens', width: 15 },
+      { header: 'code_smartex_ens', key: 'code_smartex_ens', width: 15 },
+      { header: 'participe_surveillance', key: 'participe_surveillance', width: 20 }
+    ];
+    
+    // Données
+    enseignants.forEach(ens => {
+      worksheetProfs.addRow({
+        nom_ens: ens.nom_ens,
+        prenom_ens: ens.prenom_ens,
+        abrv_ens: ens.abrv_ens,
+        email_ens: ens.email_ens,
+        grade_code_ens: ens.grade_code_ens,
+        code_smartex_ens: ens.code_smartex_ens,
+        participe_surveillance: ens.participe_surveillance === 1 ? 'TRUE' : 'FALSE'
+      });
+    });
+    
+    const profsFilePath = path.join(tempDir, 'Enseignants_participants.xlsx');
+    await workbookProfs.xlsx.writeFile(profsFilePath);
+    console.log(`✅ ${enseignants.length} enseignants exportés vers:`, profsFilePath);
+    
+    // 2. Exporter le planning des examens
+    const examens = db.prepare('SELECT * FROM planning_examens').all();
+    
+    if (examens.length === 0) {
+      return {
+        success: false,
+        error: 'Aucun examen trouvé dans la base de données. Veuillez d\'abord sauvegarder les données depuis "Analyse des Surveillances".'
+      };
+    }
+    
+    const workbookPlanning = new ExcelJS.Workbook();
+    const worksheetPlanning = workbookPlanning.addWorksheet('Planning');
+    
+    // En-têtes
+    worksheetPlanning.columns = [
+      { header: 'dateExam', key: 'dateExam', width: 15 },
+      { header: 'h_debut', key: 'h_debut', width: 20 },
+      { header: 'h_fin', key: 'h_fin', width: 20 },
+      { header: 'session', key: 'session', width: 10 },
+      { header: 'type_ex', key: 'type_ex', width: 10 },
+      { header: 'semestre', key: 'semestre', width: 15 },
+      { header: 'enseignant', key: 'enseignant', width: 15 },
+      { header: 'cod_salle', key: 'cod_salle', width: 15 }
+    ];
+    
+    // Données
+    examens.forEach(exam => {
+      worksheetPlanning.addRow({
+        dateExam: exam.dateExam,
+        h_debut: exam.h_debut,
+        h_fin: exam.h_fin,
+        session: exam.session,
+        type_ex: exam.type_ex,
+        semestre: exam.semestre,
+        enseignant: exam.enseignant,
+        cod_salle: exam.cod_salle
+      });
+    });
+    
+    const planningFilePath = path.join(tempDir, 'Répartition_SE_dedup.xlsx');
+    await workbookPlanning.xlsx.writeFile(planningFilePath);
+    console.log(`✅ ${examens.length} examens exportés vers:`, planningFilePath);
+    
+    return {
+      success: true,
+      files: {
+        teachers: profsFilePath,
+        exams: planningFilePath
+      },
+      stats: {
+        enseignants: enseignants.length,
+        examens: examens.length
+      }
+    };
+  } catch (error) {
+    console.error('❌ Error exporting DB to files:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// Lire les heures par grade depuis grade_hours.json
+ipcMain.handle('read-grade-hours', async () => {
+  try {
+    const gradeHoursPath = path.join(__dirname, 'python', 'grade_hours.json');
+    
+    // Vérifier si le fichier existe
+    if (!fsSync.existsSync(gradeHoursPath)) {
+      console.log('⚠️  grade_hours.json not found, returning default values');
+      return {
+        success: false,
+        error: 'Fichier grade_hours.json non trouvé'
+      };
+    }
+    
+    // Lire le fichier
+    const fileContent = await fs.readFile(gradeHoursPath, 'utf8');
+    const gradeHours = JSON.parse(fileContent);
+    
+    console.log('✅ Grade hours loaded:', gradeHours);
+    
+    return {
+      success: true,
+      data: gradeHours
+    };
+  } catch (error) {
+    console.error('❌ Error reading grade hours:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// Sauvegarder les heures par grade dans grade_hours.json ET les fichiers dans la DB
+ipcMain.handle('save-grade-hours', async (event, { gradeHoursData, professorsFile, planningFile }) => {
+  try {
+    const gradeHoursPath = path.join(__dirname, 'python', 'grade_hours.json');
+    
+    // 1. Transformer les données en format { "PR": 10.5, "MA": 12, ... }
+    const gradeHoursMap = {};
+    gradeHoursData.grades.forEach(grade => {
+      gradeHoursMap[grade.grade] = grade.surveillances_par_prof;
+    });
+    
+    // 2. Écrire dans le fichier JSON
+    await fs.writeFile(
+      gradeHoursPath,
+      JSON.stringify(gradeHoursMap, null, 2),
+      'utf8'
+    );
+    
+    console.log('✅ Grade hours saved successfully to:', gradeHoursPath);
+    
+    // 3. Sauvegarder les fichiers Excel dans la base de données
+    const db = getDatabase();
+    const ExcelJS = require('exceljs');
+    
+    // Lire le fichier des enseignants
+    console.log('📖 Reading professors file:', professorsFile);
+    const workbookProfs = new ExcelJS.Workbook();
+    await workbookProfs.xlsx.readFile(professorsFile);
+    const worksheetProfs = workbookProfs.worksheets[0];
+    
+    // Lire le fichier du planning
+    console.log('📖 Reading planning file:', planningFile);
+    const workbookPlanning = new ExcelJS.Workbook();
+    await workbookPlanning.xlsx.readFile(planningFile);
+    const worksheetPlanning = workbookPlanning.worksheets[0];
+    
+    // 4. Supprimer les anciennes données (écrasement)
+    db.prepare('DELETE FROM enseignants').run();
+    db.prepare('DELETE FROM planning_examens').run();
+    console.log('🗑️  Old data deleted');
+    
+    // 5. Insérer les nouveaux enseignants
+    const insertEnseignant = db.prepare(`
+      INSERT INTO enseignants (code_smartex_ens, nom_ens, prenom_ens, abrv_ens, email_ens, grade_code_ens, participe_surveillance)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    let enseignantsCount = 0;
+    const headers = {};
+    worksheetProfs.getRow(1).eachCell((cell, colNumber) => {
+      headers[cell.value] = colNumber;
+    });
+    
+    worksheetProfs.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header
+      
+      const codeSmartexEns = row.getCell(headers['code_smartex_ens'] || 6).value;
+      const nomEns = row.getCell(headers['nom_ens'] || 1).value;
+      const prenomEns = row.getCell(headers['prenom_ens'] || 2).value;
+      const abrvEns = row.getCell(headers['abrv_ens'] || 3).value;
+      const emailEns = row.getCell(headers['email_ens'] || 4).value;
+      const gradeCodeEns = row.getCell(headers['grade_code_ens'] || 5).value;
+      const participeSurveillance = row.getCell(headers['participe_surveillance'] || 7).value ? 1 : 0;
+      
+      if (codeSmartexEns) {
+        insertEnseignant.run(codeSmartexEns, nomEns, prenomEns, abrvEns, emailEns, gradeCodeEns, participeSurveillance);
+        enseignantsCount++;
+      }
+    });
+    
+    console.log(`✅ ${enseignantsCount} enseignants inserted`);
+    
+    // 6. Insérer les nouveaux examens
+    const insertExam = db.prepare(`
+      INSERT INTO planning_examens (dateExam, h_debut, h_fin, session, type_ex, semestre, enseignant, cod_salle)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    let examensCount = 0;
+    const headersPlanning = {};
+    worksheetPlanning.getRow(1).eachCell((cell, colNumber) => {
+      headersPlanning[cell.value] = colNumber;
+    });
+    
+    worksheetPlanning.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header
+      
+      const dateExam = row.getCell(headersPlanning['dateExam'] || 1).value;
+      const hDebut = row.getCell(headersPlanning['h_debut'] || 2).value;
+      const hFin = row.getCell(headersPlanning['h_fin'] || 3).value;
+      const session = row.getCell(headersPlanning['session'] || 4).value;
+      const typeEx = row.getCell(headersPlanning['type_ex'] || 5).value;
+      const semestre = row.getCell(headersPlanning['semestre'] || 6).value;
+      const enseignant = row.getCell(headersPlanning['enseignant'] || 7).value;
+      const codSalle = row.getCell(headersPlanning['cod_salle'] || 8).value;
+      
+      if (dateExam) {
+        insertExam.run(dateExam, hDebut, hFin, session, typeEx, semestre, enseignant, codSalle);
+        examensCount++;
+      }
+    });
+    
+    console.log(`✅ ${examensCount} examens inserted`);
+    
+    return {
+      success: true,
+      message: 'Configuration enregistrée avec succès',
+      path: gradeHoursPath,
+      stats: {
+        enseignants: enseignantsCount,
+        examens: examensCount
+      }
+    };
+  } catch (error) {
+    console.error('❌ Error saving grade hours:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
 // ============================================================================
 // GESTION DE L'HISTORIQUE (BASE DE DONNÉES)
 // ============================================================================

@@ -25,8 +25,6 @@ function initDatabase() {
                                                    stats_exams_count INTEGER
     );
 
-    
-
     CREATE TABLE IF NOT EXISTS planning_assignments (
                                                       id INTEGER PRIMARY KEY AUTOINCREMENT,
                                                       session_id INTEGER NOT NULL,
@@ -44,6 +42,32 @@ function initDatabase() {
                                                       teacher_email TEXT,
                                                       FOREIGN KEY (session_id) REFERENCES planning_sessions(id) ON DELETE CASCADE
       );
+
+    CREATE TABLE IF NOT EXISTS enseignants (
+                                             code_smartex_ens TEXT PRIMARY KEY,
+                                             nom_ens TEXT,
+                                             prenom_ens TEXT,
+                                             abrv_ens TEXT,
+                                             email_ens TEXT,
+                                             grade_code_ens TEXT,
+                                             participe_surveillance INTEGER,
+                                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS planning_examens (
+                                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                  dateExam TEXT NOT NULL,
+                                                  h_debut TEXT NOT NULL,
+                                                  h_fin TEXT NOT NULL,
+                                                  session TEXT NOT NULL,
+                                                  type_ex TEXT,
+                                                  semestre TEXT,
+                                                  enseignant TEXT,
+                                                  cod_salle TEXT,
+                                                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                                  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   console.log('✅ Base tables created/verified');
@@ -57,6 +81,8 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_teacher ON planning_assignments(teacher_id);
     CREATE INDEX IF NOT EXISTS idx_date ON planning_assignments(date);
     CREATE INDEX IF NOT EXISTS idx_teacher_email ON planning_assignments(teacher_email);
+    CREATE INDEX IF NOT EXISTS idx_email_ens ON enseignants(email_ens);
+    CREATE INDEX IF NOT EXISTS idx_exam_date ON planning_examens(dateExam);
   `);
 
   console.log('✅ Database initialized successfully');

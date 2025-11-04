@@ -19,6 +19,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Analyse des surveillances
   analyzeSurveillanceData: (data) => ipcRenderer.invoke('analyze-surveillance-data', data),
+  
+  // Lire les heures par grade
+  readGradeHours: () => ipcRenderer.invoke('read-grade-hours'),
+  
+  // Sauvegarder les heures par grade
+  saveGradeHours: (data) => ipcRenderer.invoke('save-grade-hours', data),
+
+  // Exporter les données de la DB vers des fichiers
+  exportDbToFiles: () => ipcRenderer.invoke('export-db-to-files'),
 
   // Écoute des logs Python en temps réel
   onPythonLog: (callback) => {

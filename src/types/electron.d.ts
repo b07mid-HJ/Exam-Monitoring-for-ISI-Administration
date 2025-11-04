@@ -5,6 +5,9 @@ export interface ElectronAPI {
   readExcelResults: (filePath: string) => Promise<{ success: boolean; data?: any; error?: string }>
   saveResultsFile: () => Promise<{ success: boolean; path?: string; error?: string }>
   analyzeSurveillanceData: (data: { professorsFile: string; planningFile: string; ecart_1_2?: number; ecart_2_3?: number; ecart_3_4?: number }) => Promise<any>
+  readGradeHours: () => Promise<{ success: boolean; data?: Record<string, number>; error?: string }>
+  saveGradeHours: (data: { gradeHoursData: any; professorsFile: string; planningFile: string }) => Promise<{ success: boolean; message?: string; error?: string; path?: string; stats?: { enseignants: number; examens: number } }>
+  exportDbToFiles: () => Promise<{ success: boolean; files?: { teachers: string; exams: string }; stats?: { enseignants: number; examens: number }; error?: string }>
   onPythonLog: (callback: (data: string) => void) => void
   onPythonError: (callback: (data: string) => void) => void
   generateGlobalDocuments: () => Promise<any>

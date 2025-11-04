@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Upload, X, Check } from 'lucide-react';
+import { Upload, X, Check, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { toast } from 'sonner'; // ✅ Ajoutez cet import
+import { toast } from 'sonner';
 
 interface UploadedFile {
   name: string;
@@ -20,6 +20,63 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
     wishes?: UploadedFile;
     exams?: UploadedFile;
   }>({});
+  const [isLoadingFromDb, setIsLoadingFromDb] = useState(false);
+
+  const handleLoadFromDatabase = async () => {
+    setIsLoadingFromDb(true);
+    try {
+      console.log('📊 Chargement des fichiers depuis la base de données...');
+      
+      if (!window.electronAPI || typeof window.electronAPI.exportDbToFiles !== 'function') {
+        throw new Error('API Electron non disponible');
+      }
+
+      const result = await window.electronAPI.exportDbToFiles();
+
+      if (result.success && result.files) {
+        console.log('✅ Fichiers exportés:', result.files);
+        console.log('📊 Statistiques:', result.stats);
+
+        // Mettre à jour l'état avec les fichiers enseignants et examens
+        const teachersFile: UploadedFile = {
+          name: 'Enseignants (depuis DB)',
+          path: result.files.teachers,
+          type: 'teachers'
+        };
+
+        const examsFile: UploadedFile = {
+          name: 'Planning Examens (depuis DB)',
+          path: result.files.exams,
+          type: 'exams'
+        };
+
+        setFiles(prev => ({
+          ...prev,
+          teachers: teachersFile,
+          exams: examsFile
+        }));
+
+        onFilesChange({
+          teachers: result.files.teachers,
+          wishes: files.wishes?.path,
+          exams: result.files.exams
+        });
+
+        toast.success('Fichiers chargés depuis la base de données', {
+          description: `${result.stats?.enseignants || 0} enseignants, ${result.stats?.examens || 0} examens`
+        });
+      } else {
+        throw new Error(result.error || 'Erreur lors de l\'export');
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur lors du chargement depuis la DB:', error);
+      toast.error('Erreur', {
+        description: error?.message || 'Impossible de charger les fichiers depuis la base de données'
+      });
+    } finally {
+      setIsLoadingFromDb(false);
+    }
+  };
 
   const handleSelectFile = async (fileType: 'teachers' | 'wishes' | 'exams') => {
     try {
@@ -119,11 +176,24 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold mb-2">Fichiers d'entrée</h3>
-        <p className="text-sm text-muted-foreground">
-          Sélectionnez les 3 fichiers Excel nécessaires pour générer le planning
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="text-lg font-semibold mb-2">Fichiers d'entrée</h3>
+          <p className="text-sm text-muted-foreground">
+            Cliquez sur "Charger depuis la DB" pour récupérer les fichiers Enseignants et Examens sauvegardés.
+            <br />
+            Le fichier Souhaits doit être importé manuellement.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleLoadFromDatabase}
+          disabled={isLoadingFromDb}
+          className="gap-2"
+        >
+          <Database className="h-4 w-4" />
+          {isLoadingFromDb ? 'Chargement...' : 'Charger depuis la DB'}
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

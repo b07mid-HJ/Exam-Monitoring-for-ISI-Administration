@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 
 import { FileUploader } from './components/FileUploader';
@@ -59,6 +59,38 @@ export default function PlanningPage() {
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | undefined>();
 
   const canGenerate = files.teachers && files.wishes && files.exams;
+
+  // Charger les heures par grade depuis le fichier JSON au démarrage
+  useEffect(() => {
+    const loadGradeHours = async () => {
+      try {
+        if (window.electronAPI && typeof window.electronAPI.readGradeHours === 'function') {
+          console.log('📖 Chargement des heures par grade depuis grade_hours.json...');
+          const result = await window.electronAPI.readGradeHours();
+          
+          if (result.success && result.data) {
+            console.log('✅ Heures par grade chargées:', result.data);
+            setGradeHours(result.data);
+            toast.success('Configuration chargée', {
+              description: 'Les heures par grade ont été chargées depuis le fichier sauvegardé'
+            });
+          } else {
+            console.log('⚠️ Utilisation des valeurs par défaut:', result.error);
+            toast.info('Valeurs par défaut utilisées', {
+              description: 'Aucune configuration sauvegardée trouvée'
+            });
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erreur lors du chargement des heures par grade:', error);
+        toast.warning('Erreur de chargement', {
+          description: 'Utilisation des valeurs par défaut'
+        });
+      }
+    };
+
+    loadGradeHours();
+  }, []);
 
   const handleGradeChange = (grade: string, value: string) => {
     const numericValue = parseFloat(value) || 0;
@@ -145,11 +177,36 @@ export default function PlanningPage() {
     }
   };
 
-  // Fonction pour réinitialiser les heures par défaut
-  const resetGradeHours = () => {
-    setGradeHours(DEFAULT_GRADE_HOURS);
-    toast.info('Heures par grade réinitialisées');
-    console.log('Heures réinitialisées aux valeurs par défaut');
+  // Fonction pour recharger les heures depuis le fichier JSON
+  const resetGradeHours = async () => {
+    try {
+      if (window.electronAPI && typeof window.electronAPI.readGradeHours === 'function') {
+        console.log('🔄 Rechargement des heures par grade depuis grade_hours.json...');
+        const result = await window.electronAPI.readGradeHours();
+        
+        if (result.success && result.data) {
+          console.log('✅ Heures par grade rechargées:', result.data);
+          setGradeHours(result.data);
+          toast.success('Configuration rechargée', {
+            description: 'Les heures par grade ont été rechargées depuis le fichier'
+          });
+        } else {
+          // Si pas de fichier, utiliser les valeurs par défaut
+          setGradeHours(DEFAULT_GRADE_HOURS);
+          toast.info('Valeurs par défaut restaurées');
+          console.log('Heures réinitialisées aux valeurs par défaut');
+        }
+      } else {
+        setGradeHours(DEFAULT_GRADE_HOURS);
+        toast.info('Valeurs par défaut restaurées');
+      }
+    } catch (error) {
+      console.error('❌ Erreur lors du rechargement:', error);
+      setGradeHours(DEFAULT_GRADE_HOURS);
+      toast.warning('Erreur', {
+        description: 'Utilisation des valeurs par défaut'
+      });
+    }
   };
 
   return (
@@ -187,7 +244,7 @@ export default function PlanningPage() {
             onClick={resetGradeHours}
             type="button"
           >
-            Réinitialiser
+            Recharger depuis fichier
           </Button>
         </div>
 
