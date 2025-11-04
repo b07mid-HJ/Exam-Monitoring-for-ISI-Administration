@@ -66,20 +66,8 @@ export default function PlanningPage() {
       try {
         if (window.electronAPI && typeof window.electronAPI.readGradeHours === 'function') {
           console.log('📖 Chargement des heures par grade depuis grade_hours.json...');
-          const result = await window.electronAPI.readGradeHours();
-          
-          if (result.success && result.data) {
-            console.log('✅ Heures par grade chargées:', result.data);
-            setGradeHours(result.data);
-            toast.success('Configuration chargée', {
-              description: 'Les heures par grade ont été chargées depuis le fichier sauvegardé'
-            });
-          } else {
-            console.log('⚠️ Utilisation des valeurs par défaut:', result.error);
-            toast.info('Valeurs par défaut utilisées', {
-              description: 'Aucune configuration sauvegardée trouvée'
-            });
-          }
+
+
         }
       } catch (error) {
         console.error('❌ Erreur lors du chargement des heures par grade:', error);
