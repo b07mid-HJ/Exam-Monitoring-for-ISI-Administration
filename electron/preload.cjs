@@ -66,6 +66,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addTeacherAssignment: (data) => ipcRenderer.invoke('add-teacher-assignment', data),
   deleteTeacherAssignment: (data) => ipcRenderer.invoke('delete-teacher-assignment', data),
 
+  // ⭐ NOUVEAU : Gestion des crédits
+  markTeacherAsAbsent: (data) => ipcRenderer.invoke('mark-teacher-as-absent', data),
+  getTeacherCredits: () => ipcRenderer.invoke('get-teacher-credits'),
+  exportCredits: () => ipcRenderer.invoke('export-credits'),
   
   // Send emails to multiple teachers
   sendEmails: (teachers) => ipcRenderer.invoke('send-emails', teachers),
