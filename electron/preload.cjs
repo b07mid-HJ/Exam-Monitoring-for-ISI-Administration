@@ -66,4 +66,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addTeacherAssignment: (data) => ipcRenderer.invoke('add-teacher-assignment', data),
   deleteTeacherAssignment: (data) => ipcRenderer.invoke('delete-teacher-assignment', data),
 
+  
+  // Send emails to multiple teachers
+  sendEmails: (teachers) => ipcRenderer.invoke('send-emails', teachers),
 });
