@@ -8,6 +8,7 @@ const { initDatabase, getDatabase, closeDatabase } = require('./database.cjs');
 let mainWindow;
 const isDev = process.env.NODE_ENV === 'development';
 
+
 // ✅ Fonctions de chemin
 const getPythonPath = () =>
   isDev
@@ -26,16 +27,129 @@ const createAppDirectories = async () => {
   const uploadsDir = path.join(userDataPath, 'uploads');
   const savedPlanningsDir = path.join(userDataPath, 'saved_plannings');
   const pythonWorkspaceDir = path.join(userDataPath, 'python-workspace');
+  const absencesDir = path.join(userDataPath, 'absences');
 
   await fs.mkdir(uploadsDir, { recursive: true });
   await fs.mkdir(savedPlanningsDir, { recursive: true });
   await fs.mkdir(pythonWorkspaceDir, { recursive: true });
+  await fs.mkdir(absencesDir, { recursive: true });
 
-  console.log('✅ App directories created:', { uploadsDir, savedPlanningsDir, pythonWorkspaceDir });
-  return { uploadsDir, savedPlanningsDir, pythonWorkspaceDir };
+  console.log('✅ App directories created:', { 
+    uploadsDir, 
+    savedPlanningsDir, 
+    pythonWorkspaceDir,
+    absencesDir 
+  });
+  
+  return { 
+    uploadsDir, 
+    savedPlanningsDir, 
+    pythonWorkspaceDir,
+    absencesDir
+  };
 };
 
 let appDirs;
+
+// Gestionnaire pour l'enregistrement des crédits des enseignants
+ipcMain.handle('record-teacher-absence', async (event, { teacherId, teacherName }) => {
+  console.log(' Début de l\'enregistrement d\'absence pour l\'enseignant:', { teacherId, teacherName });
+  
+  try {
+    // Chemin vers le dossier src/absences à la racine du projet
+    const projectRoot = isDev 
+      ? path.join(__dirname, '..', 'src', 'absences')
+      : path.join(process.resourcesPath, '..', '..', 'src', 'absences');
+    
+    console.log(' Chemin du dossier des absences:', projectRoot);
+    
+    // Créer le dossier s'il n'existe pas
+    try {
+      await fs.mkdir(projectRoot, { recursive: true });
+      console.log(' Dossier des absences créé ou déjà existant');
+    } catch (mkdirError) {
+      console.error(' Erreur lors de la création du dossier des absences:', mkdirError);
+      throw mkdirError;
+    }
+    
+    const creditsFile = path.join(projectRoot, 'credit.xlsx');
+    console.log(' Fichier des crédits:', creditsFile);
+    
+    const ExcelJS = require('exceljs');
+    let workbook = new ExcelJS.Workbook();
+    let worksheet;
+    
+    if (fsSync.existsSync(creditsFile)) {
+      console.log(' Le fichier des crédits existe, chargement...');
+      try {
+        await workbook.xlsx.readFile(creditsFile);
+        // Utiliser 'Sheet1' au lieu de 'Credits'
+        worksheet = workbook.getWorksheet('Sheet1') || workbook.addWorksheet('Sheet1');
+        console.log(' Fichier des crédits chargé avec succès');
+        
+        // Vérifier si l'en-tête existe, sinon l'ajouter
+        if (worksheet.rowCount === 0) {
+          worksheet.addRow(['ID Enseignant', 'Crédits']);
+        }
+      } catch (readError) {
+        console.error(' Erreur lors de la lecture du fichier des crédits:', readError);
+        // En cas d'erreur, essayer de récupérer la feuille existante ou en créer une nouvelle
+        worksheet = workbook.getWorksheet('Sheet1') || workbook.addWorksheet('Sheet1');
+        if (worksheet.rowCount === 0) {
+          worksheet.addRow(['ID Enseignant', 'Crédits']);
+        }
+        console.log(' Utilisation de la feuille Sheet1 existante ou création si nécessaire');
+      }
+    } else {
+      console.log(' Création d\'un nouveau fichier de crédits');
+      worksheet = workbook.addWorksheet('Sheet1');
+      worksheet.addRow(['ID Enseignant', 'Crédits']);
+    }
+    
+    // Vérifier si l'enseignant existe déjà
+    let teacherRow = null;
+    let rowNumber = 0;
+    
+    console.log(' Recherche de l\'enseignant dans le fichier...');
+    
+    // Parcourir les lignes existantes à partir de la ligne 2 (après l'en-tête)
+    for (let i = 2; i <= worksheet.rowCount; i++) {
+      const row = worksheet.getRow(i);
+      if (row.getCell(1).value === teacherId) {
+        teacherRow = row;
+        rowNumber = i;
+        console.log(` Enseignant trouvé à la ligne ${i}`);
+        break;
+      }
+    }
+    
+    if (teacherRow) {
+      // Mettre à jour le crédit existant
+      const currentCredit = teacherRow.getCell(2).value || 0;
+      const newCredit = currentCredit + 1;
+      teacherRow.getCell(2).value = newCredit;
+      console.log(` Mise à jour du crédit pour ${teacherName} (${teacherId}): ${currentCredit} → ${newCredit}`);
+    } else {
+      // Ajouter un nouveau crédit
+      worksheet.addRow([teacherId, 1]);
+      console.log(` Nouvel enregistrement pour ${teacherName} (${teacherId}) avec 1 crédit`);
+    }
+    
+    try {
+      await workbook.xlsx.writeFile(creditsFile);
+      console.log(' Fichier des crédits sauvegardé avec succès');
+    } catch (writeError) {
+      console.error(' Erreur lors de l\'écriture du fichier des crédits:', writeError);
+      throw writeError;
+    }
+    
+    console.log(' Absence enregistrée avec succès pour', teacherName);
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour du crédit:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 // ✅ Création de la fenêtre
 function createWindow() {
@@ -71,6 +185,7 @@ mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
+
 
 app.whenReady().then(async () => {
   try {
@@ -124,7 +239,8 @@ const getPythonDir = () => {
   } else {
     return path.join(process.resourcesPath, 'python', 'dist');
   }
-};// ============================================================================
+};
+
 // GESTION DES FICHIERS
 // ============================================================================
 

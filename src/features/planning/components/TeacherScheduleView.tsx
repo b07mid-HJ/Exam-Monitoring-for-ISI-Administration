@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, Mail, Calendar, User, RefreshCw, ArrowRight } from 'lucide-react';
+import { Download, Mail, Calendar, User, RefreshCw, ArrowRight, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -36,9 +36,10 @@ interface PlanningRow {
 interface TeacherScheduleViewProps {
   teacherId: string;
   data: PlanningRow[];
+  isHistoryView?: boolean;
 }
 
-export function TeacherScheduleView({ teacherId, data }: TeacherScheduleViewProps) {
+export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: TeacherScheduleViewProps) {
   const sessions = ['S1', 'S2', 'S3', 'S4'];
   const timeSlots = {
     S1: '08:30 - 10:00',
@@ -170,6 +171,30 @@ export function TeacherScheduleView({ teacherId, data }: TeacherScheduleViewProp
   };
 
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isMarkingAbsent, setIsMarkingAbsent] = useState(false);
+
+  const handleMarkAbsent = async (teacherId: string) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir déclarer cet enseignant comme absent ? Cette action est irréversible.')) {
+      return;
+    }
+
+    setIsMarkingAbsent(true);
+    try {
+      const result = await (window as any).electronAPI.markTeacherAsAbsent(teacherId);
+      if (result.success) {
+        toast.success('Enseignant marqué comme absent avec succès');
+        // Recharger les données si nécessaire
+        window.location.reload();
+      } else {
+        toast.error(result.error || 'Erreur lors de la déclaration d\'absence');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Une erreur est survenue lors de la déclaration d\'absence');
+    } finally {
+      setIsMarkingAbsent(false);
+    }
+  };
 
   const handleDownloadDoc = async () => {
     setIsDownloading(true);
@@ -414,18 +439,23 @@ export function TeacherScheduleView({ teacherId, data }: TeacherScheduleViewProp
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                onClick={handleDownloadDoc}
-                variant="outline"
-                className="gap-2"
-                disabled={isDownloading}
-              >
-                <Download className="h-4 w-4" />
-                {isDownloading ? 'Téléchargement...' : 'Télécharger'}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleDownloadDoc} disabled={isDownloading}>
+                <Download className="mr-2 h-4 w-4" />
+                {isDownloading ? 'Génération...' : 'Télécharger le PDF'}
               </Button>
-
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleMarkAbsent(teacherId)}
+                disabled={isMarkingAbsent}
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              >
+                <UserX className="mr-2 h-4 w-4" />
+                {isMarkingAbsent ? 'Traitement...' : 'Déclarer absent'}
+              </Button>
             </div>
+
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 variant="outline"

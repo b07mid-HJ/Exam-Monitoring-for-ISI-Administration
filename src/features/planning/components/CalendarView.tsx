@@ -9,7 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-import { Users, Clock, Mail,  } from 'lucide-react';
+import { Users, Clock, Mail, UserX } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface PlanningRow {
   Date: string;
@@ -28,6 +29,7 @@ interface PlanningRow {
 
 interface CalendarViewProps {
   data: PlanningRow[];
+  isHistoryView?: boolean;
 }
 
 interface SessionDetail {
@@ -45,9 +47,42 @@ interface SessionDetail {
   }>;
 }
 
-export function CalendarView({ data }: CalendarViewProps) {
+export function CalendarView({ data, isHistoryView = false }: CalendarViewProps) {
   const [selectedSession, setSelectedSession] = useState<SessionDetail | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Stocke les absences sous la forme: `${teacherId}-${day}-${session}`
+  const [absentTeachers, setAbsentTeachers] = useState<Set<string>>(new Set());
+  
+  const getAbsenceKey = (teacherId: string, day: number, session: string) => {
+    return `${teacherId}-${day}-${session}`;
+  };
+  
+  const isTeacherAbsent = (teacherId: string, day: number, session: string) => {
+    return absentTeachers.has(getAbsenceKey(teacherId, day, session));
+  };
+  
+  const markTeacherAbsent = async (teacherId: string, day: number, session: string, teacherName: string) => {
+    const absenceKey = getAbsenceKey(teacherId, day, session);
+    setAbsentTeachers(prev => new Set([...prev, absenceKey]));
+    
+    try {
+      // Appeler l'API pour incrémenter le crédit de l'enseignant
+      const result = await (window as any).electronAPI.recordTeacherAbsence({
+        teacherId,
+        teacherName
+      });
+      
+      if (result.success) {
+        toast.success('Crédit mis à jour avec succès');
+      } else {
+        toast.error('Erreur lors de la mise à jour du crédit');
+        console.error(result.error);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du crédit:', error);
+      toast.error('Erreur lors de la mise à jour du crédit');
+    }
+  };
   
   // Removed permuter and changer functionality as it's now in TeacherScheduleView
 
@@ -345,15 +380,46 @@ export function CalendarView({ data }: CalendarViewProps) {
                       </div>
 
                       <div className="space-y-3 pt-2 border-t">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Mail className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Email :</span>
-                          <a
-                            href={`mailto:${teacher.email}`}
-                            className="font-mono text-sm text-blue-600 hover:underline"
-                          >
-                            {teacher.email || 'Non renseigné'}
-                          </a>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Email :</span>
+                            <a
+                              href={`mailto:${teacher.email}`}
+                              className="font-mono text-sm text-blue-600 hover:underline"
+                            >
+                              {teacher.email || 'Non renseigné'}
+                            </a>
+                          </div>
+                          {isHistoryView && (
+                            <div className="flex items-center">
+                              {isTeacherAbsent(teacher.id, selectedSession?.day || 0, selectedSession?.session || '') ? (
+                                <Badge className="bg-red-600 text-white">Absent</Badge>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (selectedSession && window.confirm(
+                                      `Êtes-vous sûr de vouloir déclarer ${teacher.firstName} ${teacher.lastName} comme absent pour la séance ${selectedSession.session} du jour ${selectedSession.day} ?`
+                                    )) {
+                                      markTeacherAbsent(
+                                        teacher.id, 
+                                        selectedSession.day, 
+                                        selectedSession.session,
+                                        `${teacher.firstName} ${teacher.lastName}`
+                                      );
+                                    }
+                                  }}
+                                  className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                >
+                                  <UserX className="h-4 w-4 mr-2" />
+                                  Déclarer absent
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

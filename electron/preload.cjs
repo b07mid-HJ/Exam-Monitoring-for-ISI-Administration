@@ -55,6 +55,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   swapTeachers: (swapData) => ipcRenderer.invoke('swap-teachers', swapData),
   
   // ⭐ NOUVEAU : Changement de créneau pour un enseignant
-  changeTeacherSlot: (changeData) => ipcRenderer.invoke('change-teacher-slot', changeData),
+  changeTeacherSlot: (changeData) =>
+    ipcRenderer.invoke('change-teacher-slot', changeData),
+    
+  // Enregistrement des absences des enseignants
+  recordTeacherAbsence: (data) => 
+    ipcRenderer.invoke('record-teacher-absence', data),
 
 });

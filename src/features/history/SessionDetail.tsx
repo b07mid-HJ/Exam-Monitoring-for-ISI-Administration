@@ -190,7 +190,7 @@ export default function SessionDetailPage() {
           </div>
           <div className="lg:col-span-2">
             {selectedTeacherId ? (
-              <TeacherScheduleView teacherId={selectedTeacherId} data={details.assignments} />
+              <TeacherScheduleView teacherId={selectedTeacherId} data={details.assignments} isHistoryView={true} />
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
@@ -201,7 +201,7 @@ export default function SessionDetailPage() {
           </div>
         </div>
       ) : viewMode === 'calendar' ? (
-        <CalendarView data={details.assignments} />
+        <CalendarView data={details.assignments} isHistoryView={true} />
       ) : (
         <ResultsTable data={details.assignments} />
       )}
