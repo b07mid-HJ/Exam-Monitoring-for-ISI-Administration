@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Download, Mail, Calendar, User, RefreshCw, ArrowRight, UserX } from 'lucide-react';
 import { toast } from 'sonner';
+import { TeacherAssignmentActions, DeleteAssignmentButton } from './TeacherAssignmentActions';
 import {
   Dialog,
   DialogContent,
@@ -497,6 +498,13 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
                 Changer
               </Button>
             </div>
+            {/* Boutons d'ajout d'affectation */}
+            <TeacherAssignmentActions
+              teacherId={teacherId}
+              allDaysData={allDaysData}
+              sessions={sessions}
+              timeSlots={timeSlots}
+            />
           </div>
         </div>
       </Card>
@@ -552,7 +560,13 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
                     {hasAssignment ? (
                       <div className="space-y-2">
                         {assignments.map((assignment, idx) => (
-                          <div key={idx} className="space-y-1">
+                          <div key={idx} className="space-y-1 relative">
+                            <DeleteAssignmentButton
+                              teacherId={teacherId}
+                              day={day.dayNumber}
+                              session={session}
+                              isResponsible={assignment.Responsable === 'OUI'}
+                            />
                             <div className="flex items-center justify-center gap-1">
                               <span className="text-xs font-semibold">Affecté</span>
                             </div>

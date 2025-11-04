@@ -23,6 +23,8 @@ export interface ElectronAPI {
   getDashboardStats: () => Promise<any>
   swapTeachers: (swapData: any) => Promise<any>
   changeTeacherSlot: (changeData: any) => Promise<any>
+  addTeacherAssignment: (data: { teacherId: string; day?: number; session?: string; isAutomatic: boolean }) => Promise<{ success: boolean; message?: string; error?: string; isUnwishedSlot?: boolean; limitExceeded?: boolean; currentCount?: number; maxCount?: number; assignment?: any }>
+  deleteTeacherAssignment: (data: { teacherId: string; day: number; session: string }) => Promise<{ success: boolean; message?: string; error?: string }>
 }
 
 declare global {

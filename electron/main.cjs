@@ -1762,3 +1762,350 @@ ipcMain.handle('change-teacher-slot', async (event, { teacher, fromSlot, toSlot 
     return { success: false, error: error.message };
   }
 });
+
+// ============================================================================
+// AJOUT D'AFFECTATION (AUTOMATIQUE OU MANUEL)
+// ============================================================================
+
+ipcMain.handle('add-teacher-assignment', async (event, { teacherId, day, session, isAutomatic }) => {
+  try {
+    const db = getDatabase();
+    const XLSX = require('xlsx');
+
+    console.log(`📝 Ajout d'affectation pour enseignant ${teacherId}`, { day, session, isAutomatic });
+
+    // Normaliser l'ID en supprimant les zéros en avant (013 -> 13)
+    // et en ajoutant .0 pour correspondre au format de la DB (13 -> 13.0)
+    const normalizedTeacherId = String(parseInt(teacherId, 10));
+    const normalizedWithDecimal = normalizedTeacherId + '.0';
+    console.log(`🔄 ID normalisé: ${teacherId} -> ${normalizedTeacherId} -> ${normalizedWithDecimal}`);
+
+    // Récupérer les informations de l'enseignant
+    // Essayer avec tous les formats possibles
+    let teacher = db.prepare(`
+      SELECT * FROM enseignants 
+      WHERE code_smartex_ens = ? 
+         OR code_smartex_ens = ? 
+         OR code_smartex_ens = ?
+    `).get(teacherId, normalizedTeacherId, normalizedWithDecimal);
+
+    if (!teacher) {
+      // Essayer avec abrv_ens
+      teacher = db.prepare(`
+        SELECT * FROM enseignants 
+        WHERE abrv_ens = ? 
+           OR abrv_ens = ? 
+           OR abrv_ens = ?
+      `).get(teacherId, normalizedTeacherId, normalizedWithDecimal);
+    }
+
+    if (!teacher) {
+      console.error(`❌ Enseignant non trouvé avec ID: ${teacherId} (normalisé: ${normalizedTeacherId})`);
+      console.log('🔍 Vérification des enseignants disponibles:');
+      const allTeachers = db.prepare('SELECT code_smartex_ens, abrv_ens, nom_ens, prenom_ens FROM enseignants LIMIT 5').all();
+      console.log(allTeachers);
+      return { success: false, error: `Enseignant non trouvé avec ID: ${teacherId}` };
+    }
+
+    console.log(`✅ Enseignant trouvé: ${teacher.prenom_ens} ${teacher.nom_ens} (code: ${teacher.code_smartex_ens}, abrv: ${teacher.abrv_ens})`);
+
+    // Récupérer les souhaits de l'enseignant
+    // Essayer différents formats de nom
+    const teacherAbrv = teacher.abrv_ens; // Format: "A.NAFTI"
+    const teacherName1 = `${teacher.prenom_ens} ${teacher.nom_ens}`; // Format: "Asma Nafti"
+    const teacherName2 = `${teacher.nom_ens} ${teacher.prenom_ens}`; // Format: "Nafti Asma"
+    
+    console.log(`🔍 Recherche des souhaits pour:`);
+    console.log(`   Format abrv: "${teacherAbrv}"`);
+    console.log(`   Format 1: "${teacherName1}"`);
+    console.log(`   Format 2: "${teacherName2}"`);
+    
+    // 1. Essayer d'abord avec l'abréviation (le plus probable)
+    let wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherAbrv);
+    
+    // 2. Si rien, essayer "Prénom Nom"
+    if (wishes.length === 0) {
+      console.log(`⚠️  Aucun souhait trouvé avec abrv, essai format 1...`);
+      wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName1);
+    }
+    
+    // 3. Si rien, essayer "Nom Prénom"
+    if (wishes.length === 0) {
+      console.log(`⚠️  Aucun souhait trouvé avec format 1, essai format 2...`);
+      wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName2);
+    }
+    
+    // 4. Si toujours rien, recherche flexible avec LIKE
+    if (wishes.length === 0) {
+      console.log(`⚠️  Aucun souhait trouvé avec format 2, essai avec LIKE...`);
+      wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant LIKE ? OR enseignant LIKE ?')
+        .all(`%${teacher.nom_ens}%`, `%${teacher.prenom_ens}%`);
+    }
+    
+    console.log(`📋 ${wishes.length} souhaits trouvés`);
+    if (wishes.length > 0) {
+      console.log(`   Exemple:`, wishes[0]);
+    } else {
+      // Afficher quelques exemples de noms dans la table
+      const sampleWishes = db.prepare('SELECT DISTINCT enseignant FROM souhaits_enseignants LIMIT 5').all();
+      console.log(`   Exemples de noms dans la table souhaits:`, sampleWishes.map(w => w.enseignant));
+    }
+
+    // Mapper les jours français vers les numéros
+    const dayMapping = {
+      'Lundi': 1, 'Mardi': 2, 'Mercredi': 3, 'Jeudi': 4, 'Vendredi': 5, 'Samedi': 6, 'Dimanche': 7
+    };
+
+    let targetDay = day;
+    let targetSession = session;
+    let isUnwishedSlot = false;
+
+    if (isAutomatic) {
+      // Mode automatique : trouver le premier créneau libre souhaité
+      const excelPath = path.join(app.getPath('userData'), 'schedule_solution.xlsx');
+      if (!fsSync.existsSync(excelPath)) {
+        return { success: false, error: 'Fichier Excel non trouvé' };
+      }
+
+      const workbook = XLSX.readFile(excelPath);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      // Récupérer toutes les affectations actuelles de l'enseignant
+      const currentAssignments = jsonData.filter(row => row.Enseignant_ID === teacherId);
+
+      // Compter les affectations par jour
+      const assignmentsPerDay = {};
+      currentAssignments.forEach(a => {
+        assignmentsPerDay[a.Jour] = (assignmentsPerDay[a.Jour] || 0) + 1;
+      });
+
+      // Trouver le premier créneau libre souhaité
+      let found = false;
+      for (const wish of wishes) {
+        const wishDay = dayMapping[wish.jour];
+        const wishSessions = wish.seances.split(',').map(s => s.trim());
+
+        // Vérifier le nombre max par jour
+        const nombreMax = wish.nombre_max || 4;
+        if (assignmentsPerDay[wishDay] >= nombreMax) {
+          continue; // Skip ce jour si limite atteinte
+        }
+
+        for (const wishSession of wishSessions) {
+          // Vérifier si ce créneau est libre
+          const isOccupied = currentAssignments.some(a =>
+            a.Jour === wishDay && a.Séance === wishSession
+          );
+
+          if (!isOccupied) {
+            targetDay = wishDay;
+            targetSession = wishSession;
+            found = true;
+            break;
+          }
+        }
+
+        if (found) break;
+      }
+
+      if (!found) {
+        return {
+          success: false,
+          error: 'Aucun créneau libre souhaité trouvé. Tous les créneaux souhaités sont occupés ou la limite par jour est atteinte.'
+        };
+      }
+    } else {
+      // Mode manuel : vérifier si le créneau est souhaité
+      const dayName = Object.keys(dayMapping).find(key => dayMapping[key] === day);
+      const isWished = wishes.some(wish => {
+        const wishDay = dayMapping[wish.jour];
+        const wishSessions = wish.seances.split(',').map(s => s.trim());
+        return wishDay === day && wishSessions.includes(session);
+      });
+
+      isUnwishedSlot = !isWished;
+
+      // Vérifier la contrainte Nombre-Max (mais ne pas bloquer)
+      const excelPath = path.join(app.getPath('userData'), 'schedule_solution.xlsx');
+      if (fsSync.existsSync(excelPath)) {
+        const workbook = XLSX.readFile(excelPath);
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        const currentAssignments = jsonData.filter(row => row.Enseignant_ID === teacherId);
+        const assignmentsOnDay = currentAssignments.filter(a => a.Jour === day).length;
+
+        // Trouver le nombre max pour ce jour
+        const wishForDay = wishes.find(w => dayMapping[w.jour] === day);
+        const nombreMax = wishForDay?.nombre_max || 4;
+
+        // Ne pas bloquer, juste avertir
+        if (assignmentsOnDay >= nombreMax) {
+          console.log(`⚠️  Avertissement : limite dépassée (${assignmentsOnDay}/${nombreMax}), mais ajout autorisé`);
+        }
+      }
+    }
+
+    // Ajouter l'affectation dans la base de données
+    const excelPath = path.join(app.getPath('userData'), 'schedule_solution.xlsx');
+    if (!fsSync.existsSync(excelPath)) {
+      return { success: false, error: 'Fichier Excel non trouvé' };
+    }
+
+    const workbook = XLSX.readFile(excelPath);
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    // Trouver une ligne du créneau cible pour obtenir les infos de date/heure
+    const targetSlotRow = jsonData.find(row =>
+      row.Jour === targetDay && row.Séance === targetSession
+    );
+
+    if (!targetSlotRow) {
+      return { success: false, error: 'Créneau cible non trouvé dans le planning' };
+    }
+
+    // Créer la nouvelle affectation
+    const newAssignment = {
+      Date: targetSlotRow.Date,
+      Jour: targetDay,
+      Séance: targetSession,
+      Heure_Début: targetSlotRow.Heure_Début,
+      Heure_Fin: targetSlotRow.Heure_Fin,
+      Nombre_Examens: targetSlotRow.Nombre_Examens,
+      Enseignant_ID: teacherId,
+      Nom: teacher.nom_ens,
+      Prénom: teacher.prenom_ens,
+      Email: teacher.email_ens,
+      Grade: teacher.grade_code_ens,
+      Responsable: 'NON'
+    };
+
+    jsonData.push(newAssignment);
+
+    // Sauvegarder dans Excel
+    const newWorksheet = XLSX.utils.json_to_sheet(jsonData);
+    const newWorkbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, 'Planning');
+    XLSX.writeFile(newWorkbook, excelPath);
+
+    // Sauvegarder dans la DB (récupérer la dernière session)
+    const latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+
+    if (latestSession) {
+      db.prepare(`
+        INSERT INTO planning_assignments 
+        (session_id, date, day_number, session, time_start, time_end, exam_count, teacher_id, grade, is_responsible, teacher_first_name, teacher_last_name, teacher_email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        latestSession.id,
+        newAssignment.Date,
+        newAssignment.Jour,
+        newAssignment.Séance,
+        newAssignment.Heure_Début,
+        newAssignment.Heure_Fin,
+        newAssignment.Nombre_Examens,
+        newAssignment.Enseignant_ID,
+        newAssignment.Grade,
+        newAssignment.Responsable,
+        newAssignment.Prénom,
+        newAssignment.Nom,
+        newAssignment.Email
+      );
+    }
+
+    // Vérifier les contraintes pour informer l'utilisateur
+    const excelPath2 = path.join(app.getPath('userData'), 'schedule_solution.xlsx');
+    let limitExceeded = false;
+    let currentCount = 0;
+    let maxCount = 4;
+
+    if (fsSync.existsSync(excelPath2)) {
+      const workbook2 = XLSX.readFile(excelPath2);
+      const worksheet2 = workbook2.Sheets[workbook2.SheetNames[0]];
+      const jsonData2 = XLSX.utils.sheet_to_json(worksheet2);
+
+      const currentAssignments = jsonData2.filter(row => row.Enseignant_ID === teacherId);
+      currentCount = currentAssignments.filter(a => a.Jour === targetDay).length;
+
+      const wishForDay = wishes.find(w => dayMapping[w.jour] === targetDay);
+      maxCount = wishForDay?.nombre_max || 4;
+
+      limitExceeded = currentCount > maxCount;
+    }
+
+    console.log('✅ Affectation ajoutée avec succès');
+
+    return {
+      success: true,
+      message: 'Affectation ajoutée avec succès',
+      isUnwishedSlot,
+      limitExceeded,
+      currentCount,
+      maxCount,
+      assignment: newAssignment
+    };
+
+  } catch (error) {
+    console.error('Error adding assignment:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================================
+// SUPPRESSION D'AFFECTATION
+// ============================================================================
+
+ipcMain.handle('delete-teacher-assignment', async (event, { teacherId, day, session }) => {
+  try {
+    const db = getDatabase();
+    const XLSX = require('xlsx');
+
+    console.log(`🗑️  Suppression d'affectation pour enseignant ${teacherId}`, { day, session });
+
+    // Supprimer de la base de données
+    const latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+
+    if (latestSession) {
+      db.prepare(`
+        DELETE FROM planning_assignments 
+        WHERE session_id = ? AND teacher_id = ? AND day_number = ? AND session = ?
+      `).run(latestSession.id, teacherId, day, session);
+    }
+
+    // Supprimer du fichier Excel
+    const excelPath = path.join(app.getPath('userData'), 'schedule_solution.xlsx');
+    if (fsSync.existsSync(excelPath)) {
+      const workbook = XLSX.readFile(excelPath);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      // Filtrer pour supprimer l'affectation
+      const updatedData = jsonData.filter(row =>
+        !(row.Enseignant_ID === teacherId && row.Jour === day && row.Séance === session)
+      );
+
+      // Sauvegarder
+      const newWorksheet = XLSX.utils.json_to_sheet(updatedData);
+      const newWorkbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, 'Planning');
+      XLSX.writeFile(newWorkbook, excelPath);
+
+      console.log('✅ Affectation supprimée du fichier Excel');
+    }
+
+    console.log('✅ Affectation supprimée avec succès');
+
+    return {
+      success: true,
+      message: 'Affectation supprimée avec succès'
+    };
+
+  } catch (error) {
+    console.error('Error deleting assignment:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+

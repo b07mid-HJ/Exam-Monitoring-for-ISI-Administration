@@ -62,4 +62,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   recordTeacherAbsence: (data) => 
     ipcRenderer.invoke('record-teacher-absence', data),
 
+  // ⭐ NOUVEAU : Ajout et suppression d'affectations
+  addTeacherAssignment: (data) => ipcRenderer.invoke('add-teacher-assignment', data),
+  deleteTeacherAssignment: (data) => ipcRenderer.invoke('delete-teacher-assignment', data),
+
 });
