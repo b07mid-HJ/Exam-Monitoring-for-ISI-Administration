@@ -1510,6 +1510,82 @@ ipcMain.handle('swap-teachers', async (event, { teacher1, teacher2 }) => {
       return { success: false, error: 'Impossible de trouver les affectations' };
     }
 
+    // 3. Check if either teacher is responsible in their current slot
+    const warnings = {
+      teacher1IsResponsible: teacher1Data.is_responsible === 'OUI',
+      teacher2IsResponsible: teacher2Data.is_responsible === 'OUI',
+      teacher1UnwishedSlot: false,
+      teacher2UnwishedSlot: false
+    };
+
+    // 4. Get teacher info for wish checking
+    const normalizedTeacher1Id = String(parseInt(teacher1.id, 10));
+    const normalizedTeacher2Id = String(parseInt(teacher2.id, 10));
+    
+    const teacher1Info = db.prepare(`
+      SELECT * FROM enseignants 
+      WHERE code_smartex_ens = ? OR code_smartex_ens = ? OR code_smartex_ens = ?
+         OR abrv_ens = ? OR abrv_ens = ? OR abrv_ens = ?
+    `).get(
+      teacher1.id, normalizedTeacher1Id, normalizedTeacher1Id + '.0',
+      teacher1.id, normalizedTeacher1Id, normalizedTeacher1Id + '.0'
+    );
+
+    const teacher2Info = db.prepare(`
+      SELECT * FROM enseignants 
+      WHERE code_smartex_ens = ? OR code_smartex_ens = ? OR code_smartex_ens = ?
+         OR abrv_ens = ? OR abrv_ens = ? OR abrv_ens = ?
+    `).get(
+      teacher2.id, normalizedTeacher2Id, normalizedTeacher2Id + '.0',
+      teacher2.id, normalizedTeacher2Id, normalizedTeacher2Id + '.0'
+    );
+
+    // 5. Check wishes for teacher1 going to teacher2's slot
+    if (teacher1Info) {
+      const teacherAbrv = teacher1Info.abrv_ens;
+      const teacherName1 = `${teacher1Info.prenom_ens} ${teacher1Info.nom_ens}`;
+      const teacherName2 = `${teacher1Info.nom_ens} ${teacher1Info.prenom_ens}`;
+      
+      let wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherAbrv);
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName1);
+      }
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName2);
+      }
+      
+      if (wishes.length > 0) {
+        const hasWishForNewSlot = wishes.some(wish => 
+          wish.jour === teacher2.day && wish.seance === teacher2.session
+        );
+        warnings.teacher1UnwishedSlot = !hasWishForNewSlot;
+      }
+    }
+
+    // 6. Check wishes for teacher2 going to teacher1's slot
+    if (teacher2Info) {
+      const teacherAbrv = teacher2Info.abrv_ens;
+      const teacherName1 = `${teacher2Info.prenom_ens} ${teacher2Info.nom_ens}`;
+      const teacherName2 = `${teacher2Info.nom_ens} ${teacher2Info.prenom_ens}`;
+      
+      let wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherAbrv);
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName1);
+      }
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName2);
+      }
+      
+      if (wishes.length > 0) {
+        const hasWishForNewSlot = wishes.some(wish => 
+          wish.jour === teacher1.day && wish.seance === teacher1.session
+        );
+        warnings.teacher2UnwishedSlot = !hasWishForNewSlot;
+      }
+    }
+
+    console.log('⚠️  Warnings:', warnings);
+
     // 3. Swap in database using transaction
     const swapTransaction = db.transaction(() => {
       // Step 1: Set teacher 1's slot to temp
@@ -1615,7 +1691,8 @@ ipcMain.handle('swap-teachers', async (event, { teacher1, teacher2 }) => {
 
     return {
       success: true,
-      message: 'Permutation effectuée avec succès'
+      message: 'Permutation effectuée avec succès',
+      warnings
     };
 
   } catch (error) {
@@ -1669,6 +1746,48 @@ ipcMain.handle('change-teacher-slot', async (event, { teacher, fromSlot, toSlot 
     if (!targetSlotInfo) {
       return { success: false, error: 'Créneau cible introuvable' };
     }
+
+    // 4. Check warnings
+    const warnings = {
+      isResponsibleInCurrentSlot: currentAssignment.is_responsible === 'OUI',
+      unwishedNewSlot: false
+    };
+
+    // 5. Get teacher info for wish checking
+    const normalizedTeacherId = String(parseInt(teacher.id, 10));
+    
+    const teacherInfo = db.prepare(`
+      SELECT * FROM enseignants 
+      WHERE code_smartex_ens = ? OR code_smartex_ens = ? OR code_smartex_ens = ?
+         OR abrv_ens = ? OR abrv_ens = ? OR abrv_ens = ?
+    `).get(
+      teacher.id, normalizedTeacherId, normalizedTeacherId + '.0',
+      teacher.id, normalizedTeacherId, normalizedTeacherId + '.0'
+    );
+
+    // 6. Check wishes for new slot
+    if (teacherInfo) {
+      const teacherAbrv = teacherInfo.abrv_ens;
+      const teacherName1 = `${teacherInfo.prenom_ens} ${teacherInfo.nom_ens}`;
+      const teacherName2 = `${teacherInfo.nom_ens} ${teacherInfo.prenom_ens}`;
+      
+      let wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherAbrv);
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName1);
+      }
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName2);
+      }
+      
+      if (wishes.length > 0) {
+        const hasWishForNewSlot = wishes.some(wish => 
+          wish.jour === toSlot.day && wish.seance === toSlot.session
+        );
+        warnings.unwishedNewSlot = !hasWishForNewSlot;
+      }
+    }
+
+    console.log('⚠️  Warnings:', warnings);
 
     // 4. Delete old assignment and insert new one
     const changeTransaction = db.transaction(() => {
@@ -1754,7 +1873,8 @@ ipcMain.handle('change-teacher-slot', async (event, { teacher, fromSlot, toSlot 
 
     return {
       success: true,
-      message: 'Changement effectué avec succès'
+      message: 'Changement effectué avec succès',
+      warnings
     };
 
   } catch (error) {
