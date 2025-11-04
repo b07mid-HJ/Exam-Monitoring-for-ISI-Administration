@@ -115,7 +115,7 @@ export function SaveSessionDialog({ planningData, wishesFile, disabled }: SaveSe
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="principale">Principale</SelectItem>
-                <SelectItem value="principale">Partiel</SelectItem>
+                <SelectItem value="partiel">Partiel</SelectItem>
                 <SelectItem value="rattrapage">Rattrapage</SelectItem>
               </SelectContent>
             </Select>

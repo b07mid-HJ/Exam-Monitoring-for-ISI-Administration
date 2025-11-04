@@ -1,21 +1,14 @@
 import { useState, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Users, Clock, Mail, RefreshCw, ArrowRight } from 'lucide-react';
+
+import { Users, Clock, Mail,  } from 'lucide-react';
 
 interface PlanningRow {
   Date: string;
