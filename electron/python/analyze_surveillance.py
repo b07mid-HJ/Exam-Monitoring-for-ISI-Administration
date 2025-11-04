@@ -219,7 +219,7 @@ def analyze_surveillance_data(enseignants_file, planning_file, ecart_1_2=None, e
         # Calculer le nombre d'enseignants nécessaires
         # Règle: 2 profs par salle + 1 prof supplémentaire pour chaque 2 salles (pour absences)
         nb_enseignants_base = nbr_salle_total * 2  # 2 profs par salle
-        nb_enseignants_supplementaires = nbr_salle_total // 3
+        nb_enseignants_supplementaires = nbr_salle_total // 2.5
         nb_enseignants_total_necessaire = nb_enseignants_base + nb_enseignants_supplementaires
         
         # Calculer le nombre moyen d'enseignants par salle pour le calcul
