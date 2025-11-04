@@ -81,6 +81,25 @@ function initDatabase() {
                                                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                                                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS teacher_credits (
+                                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                 session_id INTEGER NOT NULL,
+                                                 teacher_id TEXT NOT NULL,
+                                                 credit INTEGER NOT NULL DEFAULT 0,
+                                                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                                 FOREIGN KEY (session_id) REFERENCES planning_sessions(id) ON DELETE CASCADE,
+                                                 UNIQUE(session_id, teacher_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS grade_hours (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      grade_code TEXT NOT NULL UNIQUE,
+      hours REAL NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
   `);
 
   console.log('✅ Base tables created/verified');
@@ -91,13 +110,15 @@ function initDatabase() {
   // ✅ ÉTAPE 3 : Créer les index
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_session_id ON planning_assignments(session_id);
-    CREATE INDEX IF NOT EXISTS idx_teacher ON planning_assignments(teacher_id);
-    CREATE INDEX IF NOT EXISTS idx_date ON planning_assignments(date);
+    CREATE INDEX IF NOT EXISTS idx_teacher_id ON planning_assignments(teacher_id);
+    CREATE INDEX IF NOT EXISTS idx_teacher_credits ON teacher_credits(session_id, teacher_id);
+    CREATE INDEX IF NOT EXISTS idx_grade_code ON grade_hours(grade_code);
     CREATE INDEX IF NOT EXISTS idx_teacher_email ON planning_assignments(teacher_email);
     CREATE INDEX IF NOT EXISTS idx_email_ens ON enseignants(email_ens);
     CREATE INDEX IF NOT EXISTS idx_exam_date ON planning_examens(dateExam);
     CREATE INDEX IF NOT EXISTS idx_souhait_enseignant ON souhaits_enseignants(enseignant);
     CREATE INDEX IF NOT EXISTS idx_souhait_jour ON souhaits_enseignants(jour);
+    CREATE INDEX IF NOT EXISTS idx_credit_session ON teacher_credits(session_id);
   `);
 
   console.log('✅ Database initialized successfully');

@@ -682,32 +682,33 @@ ipcMain.handle('export-db-to-files', async () => {
   }
 });
 
-// Lire les heures par grade depuis grade_hours.json
+// Lire les heures par grade depuis la base de données
 ipcMain.handle('read-grade-hours', async () => {
   try {
-    const gradeHoursPath = path.join(__dirname, 'python', 'grade_hours.json');
+    const db = getDatabase();
     
-    // Vérifier si le fichier existe
-    if (!fsSync.existsSync(gradeHoursPath)) {
-      console.log('⚠️  grade_hours.json not found, returning default values');
-      return {
-        success: false,
-        error: 'Fichier grade_hours.json non trouvé'
-      };
-    }
+    console.log('📖 Reading grade hours from database...');
     
-    // Lire le fichier
-    const fileContent = await fs.readFile(gradeHoursPath, 'utf8');
-    const gradeHours = JSON.parse(fileContent);
+    // Récupérer toutes les heures par grade
+    const gradeHoursRows = db.prepare(`
+      SELECT grade_code, hours FROM grade_hours
+    `).all();
     
-    console.log('✅ Grade hours loaded:', gradeHours);
+    // Transformer en objet { "PR": 10.5, "MA": 12, ... }
+    const gradeHours = {};
+    gradeHoursRows.forEach(row => {
+      gradeHours[row.grade_code] = row.hours;
+    });
+    
+    console.log('✅ Grade hours loaded from DB:', gradeHours);
+    console.log(`📊 Total grades: ${Object.keys(gradeHours).length}`);
     
     return {
       success: true,
       data: gradeHours
     };
   } catch (error) {
-    console.error('❌ Error reading grade hours:', error);
+    console.error('❌ Error reading grade hours from DB:', error);
     return {
       success: false,
       error: error.message
@@ -715,28 +716,32 @@ ipcMain.handle('read-grade-hours', async () => {
   }
 });
 
-// Sauvegarder les heures par grade dans grade_hours.json ET les fichiers dans la DB
+// Sauvegarder les heures par grade dans la base de données ET les fichiers dans la DB
 ipcMain.handle('save-grade-hours', async (event, { gradeHoursData, professorsFile, planningFile }) => {
   try {
-    const gradeHoursPath = path.join(__dirname, 'python', 'grade_hours.json');
+    // 1. Sauvegarder les heures par grade dans la base de données
+    const db = getDatabase();
     
-    // 1. Transformer les données en format { "PR": 10.5, "MA": 12, ... }
-    const gradeHoursMap = {};
+    console.log('💾 Saving grade hours to database...');
+    
+    // Supprimer les anciennes heures par grade
+    db.prepare('DELETE FROM grade_hours').run();
+    
+    // Insérer les nouvelles heures par grade
+    const insertGradeHour = db.prepare(`
+      INSERT INTO grade_hours (grade_code, hours)
+      VALUES (?, ?)
+    `);
+    
+    let gradeHoursCount = 0;
     gradeHoursData.grades.forEach(grade => {
-      gradeHoursMap[grade.grade] = grade.surveillances_par_prof;
+      insertGradeHour.run(grade.grade, grade.surveillances_par_prof);
+      gradeHoursCount++;
     });
     
-    // 2. Écrire dans le fichier JSON
-    await fs.writeFile(
-      gradeHoursPath,
-      JSON.stringify(gradeHoursMap, null, 2),
-      'utf8'
-    );
+    console.log(`✅ ${gradeHoursCount} grade hours saved to database`);
     
-    console.log('✅ Grade hours saved successfully to:', gradeHoursPath);
-    
-    // 3. Sauvegarder les fichiers Excel dans la base de données
-    const db = getDatabase();
+    // 2. Sauvegarder les fichiers Excel dans la base de données
     const ExcelJS = require('exceljs');
     
     // Lire le fichier des enseignants
@@ -751,12 +756,12 @@ ipcMain.handle('save-grade-hours', async (event, { gradeHoursData, professorsFil
     await workbookPlanning.xlsx.readFile(planningFile);
     const worksheetPlanning = workbookPlanning.worksheets[0];
     
-    // 4. Supprimer les anciennes données (écrasement)
+    // 3. Supprimer les anciennes données (écrasement)
     db.prepare('DELETE FROM enseignants').run();
     db.prepare('DELETE FROM planning_examens').run();
     console.log('🗑️  Old data deleted');
     
-    // 5. Insérer les nouveaux enseignants
+    // 4. Insérer les nouveaux enseignants
     const insertEnseignant = db.prepare(`
       INSERT INTO enseignants (code_smartex_ens, nom_ens, prenom_ens, abrv_ens, email_ens, grade_code_ens, participe_surveillance)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -787,7 +792,7 @@ ipcMain.handle('save-grade-hours', async (event, { gradeHoursData, professorsFil
     
     console.log(`✅ ${enseignantsCount} enseignants inserted`);
     
-    // 6. Insérer les nouveaux examens
+    // 5. Insérer les nouveaux examens
     const insertExam = db.prepare(`
       INSERT INTO planning_examens (dateExam, h_debut, h_fin, session, type_ex, semestre, enseignant, cod_salle)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -822,8 +827,8 @@ ipcMain.handle('save-grade-hours', async (event, { gradeHoursData, professorsFil
     return {
       success: true,
       message: 'Configuration enregistrée avec succès',
-      path: gradeHoursPath,
       stats: {
+        gradeHours: gradeHoursCount,
         enseignants: enseignantsCount,
         examens: examensCount
       }
@@ -1542,6 +1547,82 @@ ipcMain.handle('swap-teachers', async (event, { teacher1, teacher2 }) => {
       return { success: false, error: 'Impossible de trouver les affectations' };
     }
 
+    // 3. Check if either teacher is responsible in their current slot
+    const warnings = {
+      teacher1IsResponsible: teacher1Data.is_responsible === 'OUI',
+      teacher2IsResponsible: teacher2Data.is_responsible === 'OUI',
+      teacher1UnwishedSlot: false,
+      teacher2UnwishedSlot: false
+    };
+
+    // 4. Get teacher info for wish checking
+    const normalizedTeacher1Id = String(parseInt(teacher1.id, 10));
+    const normalizedTeacher2Id = String(parseInt(teacher2.id, 10));
+    
+    const teacher1Info = db.prepare(`
+      SELECT * FROM enseignants 
+      WHERE code_smartex_ens = ? OR code_smartex_ens = ? OR code_smartex_ens = ?
+         OR abrv_ens = ? OR abrv_ens = ? OR abrv_ens = ?
+    `).get(
+      teacher1.id, normalizedTeacher1Id, normalizedTeacher1Id + '.0',
+      teacher1.id, normalizedTeacher1Id, normalizedTeacher1Id + '.0'
+    );
+
+    const teacher2Info = db.prepare(`
+      SELECT * FROM enseignants 
+      WHERE code_smartex_ens = ? OR code_smartex_ens = ? OR code_smartex_ens = ?
+         OR abrv_ens = ? OR abrv_ens = ? OR abrv_ens = ?
+    `).get(
+      teacher2.id, normalizedTeacher2Id, normalizedTeacher2Id + '.0',
+      teacher2.id, normalizedTeacher2Id, normalizedTeacher2Id + '.0'
+    );
+
+    // 5. Check wishes for teacher1 going to teacher2's slot
+    if (teacher1Info) {
+      const teacherAbrv = teacher1Info.abrv_ens;
+      const teacherName1 = `${teacher1Info.prenom_ens} ${teacher1Info.nom_ens}`;
+      const teacherName2 = `${teacher1Info.nom_ens} ${teacher1Info.prenom_ens}`;
+      
+      let wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherAbrv);
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName1);
+      }
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName2);
+      }
+      
+      if (wishes.length > 0) {
+        const hasWishForNewSlot = wishes.some(wish => 
+          wish.jour === teacher2.day && wish.seance === teacher2.session
+        );
+        warnings.teacher1UnwishedSlot = !hasWishForNewSlot;
+      }
+    }
+
+    // 6. Check wishes for teacher2 going to teacher1's slot
+    if (teacher2Info) {
+      const teacherAbrv = teacher2Info.abrv_ens;
+      const teacherName1 = `${teacher2Info.prenom_ens} ${teacher2Info.nom_ens}`;
+      const teacherName2 = `${teacher2Info.nom_ens} ${teacher2Info.prenom_ens}`;
+      
+      let wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherAbrv);
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName1);
+      }
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName2);
+      }
+      
+      if (wishes.length > 0) {
+        const hasWishForNewSlot = wishes.some(wish => 
+          wish.jour === teacher1.day && wish.seance === teacher1.session
+        );
+        warnings.teacher2UnwishedSlot = !hasWishForNewSlot;
+      }
+    }
+
+    console.log('⚠️  Warnings:', warnings);
+
     // 3. Swap in database using transaction
     const swapTransaction = db.transaction(() => {
       // Step 1: Set teacher 1's slot to temp
@@ -1647,7 +1728,8 @@ ipcMain.handle('swap-teachers', async (event, { teacher1, teacher2 }) => {
 
     return {
       success: true,
-      message: 'Permutation effectuée avec succès'
+      message: 'Permutation effectuée avec succès',
+      warnings
     };
 
   } catch (error) {
@@ -1701,6 +1783,48 @@ ipcMain.handle('change-teacher-slot', async (event, { teacher, fromSlot, toSlot 
     if (!targetSlotInfo) {
       return { success: false, error: 'Créneau cible introuvable' };
     }
+
+    // 4. Check warnings
+    const warnings = {
+      isResponsibleInCurrentSlot: currentAssignment.is_responsible === 'OUI',
+      unwishedNewSlot: false
+    };
+
+    // 5. Get teacher info for wish checking
+    const normalizedTeacherId = String(parseInt(teacher.id, 10));
+    
+    const teacherInfo = db.prepare(`
+      SELECT * FROM enseignants 
+      WHERE code_smartex_ens = ? OR code_smartex_ens = ? OR code_smartex_ens = ?
+         OR abrv_ens = ? OR abrv_ens = ? OR abrv_ens = ?
+    `).get(
+      teacher.id, normalizedTeacherId, normalizedTeacherId + '.0',
+      teacher.id, normalizedTeacherId, normalizedTeacherId + '.0'
+    );
+
+    // 6. Check wishes for new slot
+    if (teacherInfo) {
+      const teacherAbrv = teacherInfo.abrv_ens;
+      const teacherName1 = `${teacherInfo.prenom_ens} ${teacherInfo.nom_ens}`;
+      const teacherName2 = `${teacherInfo.nom_ens} ${teacherInfo.prenom_ens}`;
+      
+      let wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherAbrv);
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName1);
+      }
+      if (wishes.length === 0) {
+        wishes = db.prepare('SELECT * FROM souhaits_enseignants WHERE enseignant = ?').all(teacherName2);
+      }
+      
+      if (wishes.length > 0) {
+        const hasWishForNewSlot = wishes.some(wish => 
+          wish.jour === toSlot.day && wish.seance === toSlot.session
+        );
+        warnings.unwishedNewSlot = !hasWishForNewSlot;
+      }
+    }
+
+    console.log('⚠️  Warnings:', warnings);
 
     // 4. Delete old assignment and insert new one
     const changeTransaction = db.transaction(() => {
@@ -1786,7 +1910,8 @@ ipcMain.handle('change-teacher-slot', async (event, { teacher, fromSlot, toSlot 
 
     return {
       success: true,
-      message: 'Changement effectué avec succès'
+      message: 'Changement effectué avec succès',
+      warnings
     };
 
   } catch (error) {
@@ -2022,8 +2147,20 @@ ipcMain.handle('add-teacher-assignment', async (event, { teacherId, day, session
     XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, 'Planning');
     XLSX.writeFile(newWorkbook, excelPath);
 
-    // Sauvegarder dans la DB (récupérer la dernière session)
-    const latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+    // Sauvegarder dans la DB (récupérer ou créer la dernière session)
+    let latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+
+    // Si aucune session n'existe, créer une session temporaire
+    if (!latestSession) {
+      console.log('⚠️  Aucune session trouvée, création d\'une session temporaire...');
+      const result = db.prepare(`
+        INSERT INTO planning_sessions (name, session_type, semester, year)
+        VALUES (?, ?, ?, ?)
+      `).run('Session Temporaire', 'Examen', 'S1', new Date().getFullYear());
+      
+      latestSession = { id: result.lastInsertRowid };
+      console.log(`✅ Session temporaire créée avec ID: ${latestSession.id}`);
+    }
 
     if (latestSession) {
       db.prepare(`
@@ -2067,6 +2204,53 @@ ipcMain.handle('add-teacher-assignment', async (event, { teacherId, day, session
       limitExceeded = currentCount > maxCount;
     }
 
+    // Gérer les crédits : -1 crédit lors de l'ajout d'une affectation
+    if (latestSession) {
+      try {
+        console.log(`\n🔍 === GESTION DES CRÉDITS (AJOUT AFFECTATION) ===`);
+        console.log(`Session ID: ${latestSession.id}`);
+        console.log(`Teacher ID: ${teacherId}`);
+        
+        const existingCredit = db.prepare(`
+          SELECT * FROM teacher_credits 
+          WHERE session_id = ? AND teacher_id = ?
+        `).get(latestSession.id, teacherId);
+
+        console.log(`Crédit existant:`, existingCredit);
+
+        if (existingCredit) {
+          // Mettre à jour le crédit existant : -1
+          db.prepare(`
+            UPDATE teacher_credits 
+            SET credit = credit - 1, updated_at = CURRENT_TIMESTAMP
+            WHERE session_id = ? AND teacher_id = ?
+          `).run(latestSession.id, teacherId);
+          console.log(`💳 Crédit mis à jour pour ${teacherId}: ${existingCredit.credit} -> ${existingCredit.credit - 1}`);
+        } else {
+          // Créer un nouveau crédit avec -1
+          db.prepare(`
+            INSERT INTO teacher_credits (session_id, teacher_id, credit)
+            VALUES (?, ?, ?)
+          `).run(latestSession.id, teacherId, -1);
+          console.log(`💳 Nouveau crédit créé pour ${teacherId}: -1`);
+        }
+
+        // Afficher TOUTE la table teacher_credits
+        const allCredits = db.prepare(`
+          SELECT * FROM teacher_credits WHERE session_id = ?
+        `).all(latestSession.id);
+        
+        console.log(`\n📊 CONTENU COMPLET DE LA TABLE teacher_credits (session ${latestSession.id}):`);
+        console.table(allCredits);
+        console.log(`Total de lignes: ${allCredits.length}`);
+        console.log(`=== FIN GESTION DES CRÉDITS ===\n`);
+        
+      } catch (error) {
+        console.error('❌ Erreur lors de la gestion des crédits:', error);
+        console.error('Stack trace:', error.stack);
+      }
+    }
+
     console.log('✅ Affectation ajoutée avec succès');
 
     return {
@@ -2097,7 +2281,19 @@ ipcMain.handle('delete-teacher-assignment', async (event, { teacherId, day, sess
     console.log(`🗑️  Suppression d'affectation pour enseignant ${teacherId}`, { day, session });
 
     // Supprimer de la base de données
-    const latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+    let latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+
+    // Si aucune session n'existe, créer une session temporaire
+    if (!latestSession) {
+      console.log('⚠️  Aucune session trouvée, création d\'une session temporaire...');
+      const result = db.prepare(`
+        INSERT INTO planning_sessions (name, session_type, semester, year)
+        VALUES (?, ?, ?, ?)
+      `).run('Session Temporaire', 'Examen', 'S1', new Date().getFullYear());
+      
+      latestSession = { id: result.lastInsertRowid };
+      console.log(`✅ Session temporaire créée avec ID: ${latestSession.id}`);
+    }
 
     if (latestSession) {
       db.prepare(`
@@ -2127,6 +2323,53 @@ ipcMain.handle('delete-teacher-assignment', async (event, { teacherId, day, sess
       console.log('✅ Affectation supprimée du fichier Excel');
     }
 
+    // Gérer les crédits : +1 crédit lors de la suppression d'une affectation
+    if (latestSession) {
+      try {
+        console.log(`\n🔍 === GESTION DES CRÉDITS (SUPPRESSION AFFECTATION) ===`);
+        console.log(`Session ID: ${latestSession.id}`);
+        console.log(`Teacher ID: ${teacherId}`);
+        
+        const existingCredit = db.prepare(`
+          SELECT * FROM teacher_credits 
+          WHERE session_id = ? AND teacher_id = ?
+        `).get(latestSession.id, teacherId);
+
+        console.log(`Crédit existant:`, existingCredit);
+
+        if (existingCredit) {
+          // Mettre à jour le crédit existant : +1
+          db.prepare(`
+            UPDATE teacher_credits 
+            SET credit = credit + 1, updated_at = CURRENT_TIMESTAMP
+            WHERE session_id = ? AND teacher_id = ?
+          `).run(latestSession.id, teacherId);
+          console.log(`💳 Crédit mis à jour pour ${teacherId}: ${existingCredit.credit} -> ${existingCredit.credit + 1}`);
+        } else {
+          // Créer un nouveau crédit avec +1
+          db.prepare(`
+            INSERT INTO teacher_credits (session_id, teacher_id, credit)
+            VALUES (?, ?, ?)
+          `).run(latestSession.id, teacherId, 1);
+          console.log(`💳 Nouveau crédit créé pour ${teacherId}: +1`);
+        }
+
+        // Afficher TOUTE la table teacher_credits
+        const allCredits = db.prepare(`
+          SELECT * FROM teacher_credits WHERE session_id = ?
+        `).all(latestSession.id);
+        
+        console.log(`\n📊 CONTENU COMPLET DE LA TABLE teacher_credits (session ${latestSession.id}):`);
+        console.table(allCredits);
+        console.log(`Total de lignes: ${allCredits.length}`);
+        console.log(`=== FIN GESTION DES CRÉDITS ===\n`);
+        
+      } catch (error) {
+        console.error('❌ Erreur lors de la gestion des crédits:', error);
+        console.error('Stack trace:', error.stack);
+      }
+    }
+
     console.log('✅ Affectation supprimée avec succès');
 
     return {
@@ -2136,6 +2379,200 @@ ipcMain.handle('delete-teacher-assignment', async (event, { teacherId, day, sess
 
   } catch (error) {
     console.error('Error deleting assignment:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================================
+// MARQUER UN ENSEIGNANT COMME ABSENT
+// ============================================================================
+
+ipcMain.handle('mark-teacher-as-absent', async (event, { teacherId }) => {
+  try {
+    const db = getDatabase();
+    
+    console.log(`👤 Marquage de l'enseignant ${teacherId} comme absent`);
+
+    // Récupérer ou créer la dernière session
+    let latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+
+    // Si aucune session n'existe, créer une session temporaire
+    if (!latestSession) {
+      console.log('⚠️  Aucune session trouvée, création d\'une session temporaire...');
+      const result = db.prepare(`
+        INSERT INTO planning_sessions (name, session_type, semester, year)
+        VALUES (?, ?, ?, ?)
+      `).run('Session Temporaire', 'Examen', 'S1', new Date().getFullYear());
+      
+      latestSession = { id: result.lastInsertRowid };
+      console.log(`✅ Session temporaire créée avec ID: ${latestSession.id}`);
+    }
+
+    // Gérer les crédits : +1 crédit pour absence
+    try {
+      console.log(`\n🔍 === GESTION DES CRÉDITS (MARQUER ABSENT) ===`);
+      console.log(`Session ID: ${latestSession.id}`);
+      console.log(`Teacher ID: ${teacherId}`);
+      
+      const existingCredit = db.prepare(`
+        SELECT * FROM teacher_credits 
+        WHERE session_id = ? AND teacher_id = ?
+      `).get(latestSession.id, teacherId);
+
+      console.log(`Crédit existant:`, existingCredit);
+
+      if (existingCredit) {
+        // Mettre à jour le crédit existant : +1
+        db.prepare(`
+          UPDATE teacher_credits 
+          SET credit = credit + 1, updated_at = CURRENT_TIMESTAMP
+          WHERE session_id = ? AND teacher_id = ?
+        `).run(latestSession.id, teacherId);
+        console.log(`💳 Crédit mis à jour pour ${teacherId}: ${existingCredit.credit} -> ${existingCredit.credit + 1}`);
+      } else {
+        // Créer un nouveau crédit avec +1
+        db.prepare(`
+          INSERT INTO teacher_credits (session_id, teacher_id, credit)
+          VALUES (?, ?, ?)
+        `).run(latestSession.id, teacherId, 1);
+        console.log(`💳 Nouveau crédit créé pour ${teacherId}: +1`);
+      }
+
+      // Afficher TOUTE la table teacher_credits
+      const allCredits = db.prepare(`
+        SELECT * FROM teacher_credits WHERE session_id = ?
+      `).all(latestSession.id);
+      
+      console.log(`\n📊 CONTENU COMPLET DE LA TABLE teacher_credits (session ${latestSession.id}):`);
+      console.table(allCredits);
+      console.log(`Total de lignes: ${allCredits.length}`);
+      console.log(`=== FIN GESTION DES CRÉDITS ===\n`);
+      
+    } catch (error) {
+      console.error('❌ Erreur lors de la gestion des crédits:', error);
+      console.error('Stack trace:', error.stack);
+      return { success: false, error: error.message };
+    }
+
+    console.log('✅ Enseignant marqué comme absent avec succès');
+
+    return {
+      success: true,
+      message: 'Enseignant marqué comme absent, crédit ajouté'
+    };
+
+  } catch (error) {
+    console.error('Error marking teacher as absent:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================================
+// RÉCUPÉRER LES CRÉDITS DE LA SESSION ACTUELLE
+// ============================================================================
+
+ipcMain.handle('get-teacher-credits', async () => {
+  try {
+    const db = getDatabase();
+    
+    console.log(`\n🔍 === GET TEACHER CREDITS ===`);
+    
+    // Récupérer la dernière session
+    const latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+
+    console.log(`Dernière session:`, latestSession);
+
+    if (!latestSession) {
+      console.log(`⚠️  Aucune session trouvée, retour de tableau vide`);
+      console.log(`=== FIN GET TEACHER CREDITS ===\n`);
+      return { success: true, credits: [] };
+    }
+
+    // Récupérer tous les crédits de la session
+    const credits = db.prepare(`
+      SELECT tc.teacher_id, tc.credit, e.nom_ens, e.prenom_ens, e.email_ens, e.grade_code_ens
+      FROM teacher_credits tc
+      LEFT JOIN enseignants e ON tc.teacher_id = e.code_smartex_ens
+      WHERE tc.session_id = ?
+      ORDER BY tc.teacher_id
+    `).all(latestSession.id);
+
+    console.log(`📊 ${credits.length} crédits récupérés pour la session ${latestSession.id}`);
+    console.table(credits);
+    console.log(`=== FIN GET TEACHER CREDITS ===\n`);
+
+    return {
+      success: true,
+      credits: credits
+    };
+
+  } catch (error) {
+    console.error('❌ Error getting teacher credits:', error);
+    console.error('Stack trace:', error.stack);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================================
+// EXPORTER LES CRÉDITS EN EXCEL
+// ============================================================================
+
+ipcMain.handle('export-credits', async () => {
+  try {
+    const db = getDatabase();
+    const XLSX = require('xlsx');
+    
+    console.log('📤 Exportation des crédits en Excel...');
+
+    // Récupérer la dernière session
+    const latestSession = db.prepare('SELECT id FROM planning_sessions ORDER BY created_at DESC LIMIT 1').get();
+
+    if (!latestSession) {
+      return { success: false, error: 'Aucune session trouvée' };
+    }
+
+    // Récupérer tous les crédits de la session
+    const credits = db.prepare(`
+      SELECT tc.teacher_id as IdProf, tc.credit as Credit
+      FROM teacher_credits tc
+      WHERE tc.session_id = ?
+      ORDER BY tc.teacher_id
+    `).all(latestSession.id);
+
+    if (credits.length === 0) {
+      return { success: false, error: 'Aucun crédit à exporter' };
+    }
+
+    // Créer le fichier Excel
+    const worksheet = XLSX.utils.json_to_sheet(credits);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Credits');
+
+    // Sauvegarder dans le dossier userData
+    const exportPath = path.join(app.getPath('userData'), 'credits.xlsx');
+    XLSX.writeFile(workbook, exportPath);
+
+    console.log(`✅ Crédits exportés vers: ${exportPath}`);
+
+    // Proposer à l'utilisateur de sauvegarder le fichier
+    const { dialog } = require('electron');
+    const result = await dialog.showSaveDialog({
+      title: 'Sauvegarder le fichier de crédits',
+      defaultPath: 'credits.xlsx',
+      filters: [
+        { name: 'Excel Files', extensions: ['xlsx'] }
+      ]
+    });
+
+    if (!result.canceled && result.filePath) {
+      await fs.copyFile(exportPath, result.filePath);
+      return { success: true, path: result.filePath };
+    }
+
+    return { success: false, error: 'Export annulé' };
+
+  } catch (error) {
+    console.error('Error exporting credits:', error);
     return { success: false, error: error.message };
   }
 });

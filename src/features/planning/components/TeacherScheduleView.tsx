@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, Mail, Calendar, User, RefreshCw, ArrowRight, UserX } from 'lucide-react';
+import { Download, Mail, Calendar, User, RefreshCw, ArrowRight, UserX, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { TeacherAssignmentActions, DeleteAssignmentButton } from './TeacherAssignmentActions';
 import {
@@ -11,6 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -71,6 +81,12 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
   } | null>(null);
   const [changeTargetDay, setChangeTargetDay] = useState<number | undefined>();
   const [changeTargetSession, setChangeTargetSession] = useState<string | undefined>();
+
+  // États pour les alertes de warnings
+  const [swapWarningDialogOpen, setSwapWarningDialogOpen] = useState(false);
+  const [swapWarnings, setSwapWarnings] = useState<any>(null);
+  const [changeWarningDialogOpen, setChangeWarningDialogOpen] = useState(false);
+  const [changeWarnings, setChangeWarnings] = useState<any>(null);
 
   const teacherData = useMemo(() => {
     return data.filter((row) => row.Enseignant_ID === teacherId);
@@ -273,7 +289,7 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
     setSwapDialogOpen(true);
   };
 
-  const handleConfirmSwap = async () => {
+  const executeSwap = async () => {
     if (!swapTeacher || !swapTargetTeacher || 
         !swapTeacher1TargetDay || !swapTeacher1TargetSession ||
         !swapTeacher2TargetDay || !swapTeacher2TargetSession) return;
@@ -308,11 +324,74 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
       
       if (result.success) {
         setSwapDialogOpen(false);
+        setSwapWarningDialogOpen(false);
         toast.success('Permutation effectuée avec succès !', {
           description: 'Les données ont été mises à jour dans la base de données et le fichier Excel'
         });
         
         // Refresh the page to show updated data
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        toast.error('Erreur lors de la permutation', {
+          description: result.error
+        });
+      }
+    } catch (error) {
+      toast.error('Erreur', {
+        description: error instanceof Error ? error.message : 'Erreur inconnue'
+      });
+    }
+  };
+
+  const handleConfirmSwap = async () => {
+    if (!swapTeacher || !swapTargetTeacher || 
+        !swapTeacher1TargetDay || !swapTeacher1TargetSession ||
+        !swapTeacher2TargetDay || !swapTeacher2TargetSession) return;
+    
+    try {
+      // Call backend to check warnings first
+      const result = await (window as any).electronAPI.swapTeachers({
+        teacher1: {
+          id: swapTeacher.id,
+          day: swapTeacher1TargetDay,
+          session: swapTeacher1TargetSession
+        },
+        teacher2: {
+          id: swapTargetTeacher,
+          day: swapTeacher2TargetDay,
+          session: swapTeacher2TargetSession
+        }
+      });
+      
+      if (result.success && result.warnings) {
+        const hasWarnings = result.warnings.teacher1IsResponsible || 
+                           result.warnings.teacher2IsResponsible ||
+                           result.warnings.teacher1UnwishedSlot ||
+                           result.warnings.teacher2UnwishedSlot;
+        
+        if (hasWarnings) {
+          // Show warning dialog
+          setSwapWarnings(result.warnings);
+          setSwapWarningDialogOpen(true);
+          // Don't close the swap dialog yet
+        } else {
+          // No warnings, proceed
+          setSwapDialogOpen(false);
+          toast.success('Permutation effectuée avec succès !', {
+            description: 'Les données ont été mises à jour dans la base de données et le fichier Excel'
+          });
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        }
+      } else if (result.success) {
+        // No warnings property, proceed normally
+        setSwapDialogOpen(false);
+        toast.success('Permutation effectuée avec succès !', {
+          description: 'Les données ont été mises à jour dans la base de données et le fichier Excel'
+        });
         setTimeout(() => {
           window.location.reload();
         }, 1500);
@@ -353,13 +432,31 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
         }
       });
       
-      if (result.success) {
+      if (result.success && result.warnings) {
+        const hasWarnings = result.warnings.isResponsibleInCurrentSlot || 
+                           result.warnings.unwishedNewSlot;
+        
+        if (hasWarnings) {
+          // Show warning dialog
+          setChangeWarnings(result.warnings);
+          setChangeWarningDialogOpen(true);
+          // Don't close the change dialog yet
+        } else {
+          // No warnings, proceed
+          setChangeDialogOpen(false);
+          toast.success('Changement effectué avec succès !', {
+            description: 'Les données ont été mises à jour dans la base de données et le fichier Excel'
+          });
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        }
+      } else if (result.success) {
+        // No warnings property, proceed normally
         setChangeDialogOpen(false);
         toast.success('Changement effectué avec succès !', {
           description: 'Les données ont été mises à jour dans la base de données et le fichier Excel'
         });
-        
-        // Refresh the page to show updated data
         setTimeout(() => {
           window.location.reload();
         }, 1500);
@@ -445,16 +542,7 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
                 <Download className="mr-2 h-4 w-4" />
                 {isDownloading ? 'Génération...' : 'Télécharger le PDF'}
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleMarkAbsent(teacherId)}
-                disabled={isMarkingAbsent}
-                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-              >
-                <UserX className="mr-2 h-4 w-4" />
-                {isMarkingAbsent ? 'Traitement...' : 'Déclarer absent'}
-              </Button>
+            
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2">
@@ -985,6 +1073,142 @@ export function TeacherScheduleView({ teacherId, data, isHistoryView = false }: 
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Alert Dialog pour les warnings de permutation */}
+      <AlertDialog open={swapWarningDialogOpen} onOpenChange={setSwapWarningDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-600" />
+              Attention - Permutation avec avertissements
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3 mt-2">
+                {swapWarnings?.teacher1IsResponsible && (
+                  <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200">
+                    <p className="font-semibold text-orange-700 dark:text-orange-300">
+                      ⚠️ {swapTeacher?.name} est RESPONSABLE dans son créneau actuel
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jour {swapTeacher1TargetDay} - {swapTeacher1TargetSession}
+                    </p>
+                  </div>
+                )}
+                {swapWarnings?.teacher2IsResponsible && (
+                  <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200">
+                    <p className="font-semibold text-orange-700 dark:text-orange-300">
+                      ⚠️ L'autre enseignant est RESPONSABLE dans son créneau actuel
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jour {swapTeacher2TargetDay} - {swapTeacher2TargetSession}
+                    </p>
+                  </div>
+                )}
+                {swapWarnings?.teacher1UnwishedSlot && (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950 rounded-md border border-yellow-200">
+                    <p className="font-semibold text-yellow-700 dark:text-yellow-300">
+                      ⚠️ {swapTeacher?.name} n'a pas souhaité le nouveau créneau
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jour {swapTeacher2TargetDay} - {swapTeacher2TargetSession}
+                    </p>
+                  </div>
+                )}
+                {swapWarnings?.teacher2UnwishedSlot && (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950 rounded-md border border-yellow-200">
+                    <p className="font-semibold text-yellow-700 dark:text-yellow-300">
+                      ⚠️ L'autre enseignant n'a pas souhaité le nouveau créneau
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jour {swapTeacher1TargetDay} - {swapTeacher1TargetSession}
+                    </p>
+                  </div>
+                )}
+                <p className="text-sm mt-4">
+                  Voulez-vous continuer avec cette permutation malgré ces avertissements ?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setSwapWarningDialogOpen(false);
+              setSwapDialogOpen(false);
+            }}>
+              Annuler
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setSwapWarningDialogOpen(false);
+                setSwapDialogOpen(false);
+                toast.success('Permutation effectuée avec succès !');
+                setTimeout(() => window.location.reload(), 1500);
+              }}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Continuer quand même
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Alert Dialog pour les warnings de changement */}
+      <AlertDialog open={changeWarningDialogOpen} onOpenChange={setChangeWarningDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-600" />
+              Attention - Changement avec avertissements
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3 mt-2">
+                {changeWarnings?.isResponsibleInCurrentSlot && (
+                  <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200">
+                    <p className="font-semibold text-orange-700 dark:text-orange-300">
+                      ⚠️ {changeTeacher?.name} est RESPONSABLE dans son créneau actuel
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jour {changeTeacher?.currentDay} - {changeTeacher?.currentSession}
+                    </p>
+                  </div>
+                )}
+                {changeWarnings?.unwishedNewSlot && (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950 rounded-md border border-yellow-200">
+                    <p className="font-semibold text-yellow-700 dark:text-yellow-300">
+                      ⚠️ {changeTeacher?.name} n'a pas souhaité le nouveau créneau
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Jour {changeTargetDay} - {changeTargetSession}
+                    </p>
+                  </div>
+                )}
+                <p className="text-sm mt-4">
+                  Voulez-vous continuer avec ce changement malgré ces avertissements ?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setChangeWarningDialogOpen(false);
+              setChangeDialogOpen(false);
+            }}>
+              Annuler
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setChangeWarningDialogOpen(false);
+                setChangeDialogOpen(false);
+                toast.success('Changement effectué avec succès !');
+                setTimeout(() => window.location.reload(), 1500);
+              }}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Continuer quand même
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

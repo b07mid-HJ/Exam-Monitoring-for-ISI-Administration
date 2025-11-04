@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { TeacherSelector } from '@/features/planning/components/TeacherSelector';
 import { TeacherScheduleView } from '@/features/planning/components/TeacherScheduleView';
 import { ExportCalendarButton } from '@/features/planning/components/ExportCalendarButton';
+import { ExportCreditsButton } from '@/features/planning/components/ExportCreditsButton';
 
 interface SessionDetails {
   session: {
@@ -143,6 +144,7 @@ export default function SessionDetailPage() {
         <div className="flex gap-2">
           <ViewToggle view={viewMode} onViewChange={setViewMode} />
           {viewMode === 'calendar' && <ExportCalendarButton />}
+          <ExportCreditsButton />
           <Button onClick={handleExport} className="gap-2">
             <Download className="h-4 w-4" />
             Exporter Excel

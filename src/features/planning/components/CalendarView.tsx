@@ -66,21 +66,24 @@ export function CalendarView({ data, isHistoryView = false }: CalendarViewProps)
     setAbsentTeachers(prev => new Set([...prev, absenceKey]));
     
     try {
-      // Appeler l'API pour incrémenter le crédit de l'enseignant
-      const result = await (window as any).electronAPI.recordTeacherAbsence({
-        teacherId,
-        teacherName
+      // Appeler l'API pour marquer l'enseignant comme absent et ajouter +1 crédit
+      const result = await (window as any).electronAPI.markTeacherAsAbsent({
+        teacherId
       });
       
       if (result.success) {
-        toast.success('Crédit mis à jour avec succès');
+        toast.success('Enseignant marqué comme absent', {
+          description: 'Un crédit a été ajouté à cet enseignant'
+        });
       } else {
-        toast.error('Erreur lors de la mise à jour du crédit');
+        toast.error('Erreur lors du marquage d\'absence', {
+          description: result.error
+        });
         console.error(result.error);
       }
     } catch (error) {
-      console.error('Erreur lors de la mise à jour du crédit:', error);
-      toast.error('Erreur lors de la mise à jour du crédit');
+      console.error('Erreur lors du marquage d\'absence:', error);
+      toast.error('Erreur lors du marquage d\'absence');
     }
   };
   
