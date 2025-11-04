@@ -170,7 +170,6 @@ export function TeacherScheduleView({ teacherId, data }: TeacherScheduleViewProp
   };
 
   const [isDownloading, setIsDownloading] = useState(false);
-  const [isSending, setIsSending] = useState(false);
 
   const handleDownloadDoc = async () => {
     setIsDownloading(true);
@@ -200,30 +199,6 @@ export function TeacherScheduleView({ teacherId, data }: TeacherScheduleViewProp
     }
   };
 
-  const handleSendEmail = () => {
-    setIsSending(true);
-
-    if (teacher.email) {
-      const subject = encodeURIComponent(`Planning de surveillance - ${teacher.lastName} ${teacher.firstName}`);
-      const body = encodeURIComponent(
-        `Bonjour Mr/Mme ${teacher.lastName},\n\n` +
-        `Veuillez trouver ci-joint votre planning de surveillance.\n\n` +
-        `Nombre total de surveillances : ${teacher.totalAssignments}\n\n` +
-        `Cordialement`
-      );
-      window.location.href = `mailto:${teacher.email}?subject=${subject}&body=${body}`;
-
-      toast.success('Client email ouvert', {
-        description: `Email préparé pour ${teacher.email}`,
-      });
-    } else {
-      toast.error('Email non disponible', {
-        description: 'Aucun email renseigné pour cet enseignant',
-      });
-    }
-
-    setTimeout(() => setIsSending(false), 1000);
-  };
 
   const getGradeColor = (grade: string) => {
     const colors: Record<string, string> = {
