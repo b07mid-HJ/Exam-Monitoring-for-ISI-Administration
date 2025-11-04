@@ -679,7 +679,7 @@ ipcMain.handle('save-grade-hours', async (event, { gradeHoursData, professorsFil
 // ============================================================================
 
 // Sauvegarder une session de planning
-ipcMain.handle('save-planning-session', async (event, { name, sessionType, semester, planningData }) => {
+ipcMain.handle('save-planning-session', async (event, { name, sessionType, semester, planningData, wishesFile }) => {
   try {
     const db = getDatabase();
     const year = new Date().getFullYear();
@@ -758,13 +758,110 @@ ipcMain.handle('save-planning-session', async (event, { name, sessionType, semes
 
     console.log(`✅ Session ${sessionId} sauvegardée avec ${planningData.length} affectations`);
 
+    // Sauvegarder les souhaits dans la base de données
+    let souhaitsCount = 0;
+    if (wishesFile) {
+      try {
+        const ExcelJS = require('exceljs');
+        const workbookWishes = new ExcelJS.Workbook();
+        await workbookWishes.xlsx.readFile(wishesFile);
+        const worksheetWishes = workbookWishes.worksheets[0];
+        
+        // Vider la table des souhaits avant d'insérer les nouveaux
+        db.prepare('DELETE FROM souhaits_enseignants').run();
+        console.log('🗑️  Old wishes data deleted');
+        
+        // Préparer l'insertion
+        const insertSouhait = db.prepare(`
+          INSERT INTO souhaits_enseignants (enseignant, semestre, session, date, jour, seances, nombre_max)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        
+        // Lire les en-têtes
+        const headersWishes = {};
+        worksheetWishes.getRow(1).eachCell((cell, colNumber) => {
+          headersWishes[cell.value] = colNumber;
+        });
+        
+        // Insérer les souhaits
+        worksheetWishes.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return; // Skip header
+          
+          const enseignant = row.getCell(headersWishes['Enseignant'] || 1).value;
+          const semestre = row.getCell(headersWishes['Semestre'] || 2).value;
+          const session = row.getCell(headersWishes['Session'] || 3).value;
+          const date = row.getCell(headersWishes['Date'] || 4).value;
+          const jour = row.getCell(headersWishes['Jour'] || 5).value;
+          const seances = row.getCell(headersWishes['Séances'] || 6).value;
+          const nombreMax = row.getCell(headersWishes['Nombre-Max'] || 7).value;
+          
+          if (enseignant && jour && seances) {
+            insertSouhait.run(
+              enseignant,
+              semestre,
+              session,
+              date,
+              jour,
+              seances,
+              nombreMax || null
+            );
+            souhaitsCount++;
+          }
+        });
+        
+        console.log(`✅ ${souhaitsCount} souhaits sauvegardés`);
+      } catch (error) {
+        console.error('⚠️  Erreur lors de la sauvegarde des souhaits:', error.message);
+        // Ne pas bloquer la sauvegarde de la session si les souhaits échouent
+      }
+    }
+
     return {
       success: true,
       sessionId,
-      message: `Planning "${name}" sauvegardé avec succès`
+      message: `Planning "${name}" sauvegardé avec succès${souhaitsCount > 0 ? ` (${souhaitsCount} souhaits inclus)` : ''}`
     };
   } catch (error) {
     console.error('Error saving planning:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Récupérer les souhaits par enseignant
+ipcMain.handle('get-wishes-by-teacher', async (event, teacherName) => {
+  try {
+    const db = getDatabase();
+    const wishes = db.prepare(`
+      SELECT * FROM souhaits_enseignants
+      WHERE enseignant = ?
+      ORDER BY jour, seances
+    `).all(teacherName);
+    
+    return {
+      success: true,
+      data: wishes
+    };
+  } catch (error) {
+    console.error('Error getting wishes by teacher:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Récupérer tous les souhaits
+ipcMain.handle('get-all-wishes', async () => {
+  try {
+    const db = getDatabase();
+    const wishes = db.prepare(`
+      SELECT * FROM souhaits_enseignants
+      ORDER BY enseignant, jour, seances
+    `).all();
+    
+    return {
+      success: true,
+      data: wishes
+    };
+  } catch (error) {
+    console.error('Error getting all wishes:', error);
     return { success: false, error: error.message };
   }
 });

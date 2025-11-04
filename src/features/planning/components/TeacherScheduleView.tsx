@@ -449,14 +449,7 @@ export function TeacherScheduleView({ teacherId, data }: TeacherScheduleViewProp
                 <Download className="h-4 w-4" />
                 {isDownloading ? 'Téléchargement...' : 'Télécharger'}
               </Button>
-              <Button
-                onClick={handleSendEmail}
-                className="gap-2"
-                disabled={isSending || !teacher.email}
-              >
-                <Mail className="h-4 w-4" />
-                {isSending ? 'Envoi...' : 'Envoyer Email'}
-              </Button>
+
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button

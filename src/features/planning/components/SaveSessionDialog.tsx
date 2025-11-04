@@ -23,10 +23,11 @@ import { toast } from 'sonner';
 
 interface SaveSessionDialogProps {
   planningData: any[];
+  wishesFile?: string;
   disabled?: boolean;
 }
 
-export function SaveSessionDialog({ planningData, disabled }: SaveSessionDialogProps) {
+export function SaveSessionDialog({ planningData, wishesFile, disabled }: SaveSessionDialogProps) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -57,9 +58,10 @@ export function SaveSessionDialog({ planningData, disabled }: SaveSessionDialogP
         name: name.trim(),
         sessionType,
         semester,
-        planningData
+        planningData,
+        wishesFile
       });
-console.log(result);
+      console.log(result);
       if (result.success) {
         toast.success('Session sauvegardée !', {
           description: result.message
@@ -113,6 +115,7 @@ console.log(result);
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="principale">Principale</SelectItem>
+                <SelectItem value="principale">Partiel</SelectItem>
                 <SelectItem value="rattrapage">Rattrapage</SelectItem>
               </SelectContent>
             </Select>

@@ -18,6 +18,8 @@ export interface ElectronAPI {
   getSessionDetails: (sessionId: number) => Promise<any>
   deleteSession: (sessionId: number) => Promise<any>
   exportSavedSession: (sessionId: number) => Promise<any>
+  getWishesByTeacher: (teacherName: string) => Promise<{ success: boolean; data?: any[]; error?: string }>
+  getAllWishes: () => Promise<{ success: boolean; data?: any[]; error?: string }>
   getDashboardStats: () => Promise<any>
   swapTeachers: (swapData: any) => Promise<any>
   changeTeacherSlot: (changeData: any) => Promise<any>

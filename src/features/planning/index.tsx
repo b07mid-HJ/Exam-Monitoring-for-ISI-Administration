@@ -316,7 +316,7 @@ export default function PlanningPage() {
             <div className="flex flex-wrap gap-2">
               <ViewToggle view={viewMode} onViewChange={setViewMode} />
               {viewMode === 'calendar' && <ExportCalendarButton disabled={!result?.success} />}
-              <SaveSessionDialog planningData={planningData} disabled={!result?.success} />
+              <SaveSessionDialog planningData={planningData} wishesFile={files.wishes} disabled={!result?.success} />
               <ExportButtons disabled={!result?.success} />
             </div>
           </div>

@@ -68,6 +68,19 @@ function initDatabase() {
                                                   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                                                   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS souhaits_enseignants (
+                                                       id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                       enseignant TEXT NOT NULL,
+                                                       semestre TEXT,
+                                                       session TEXT,
+                                                       date TEXT,
+                                                       jour TEXT NOT NULL,
+                                                       seances TEXT NOT NULL,
+                                                       nombre_max INTEGER,
+                                                       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                                       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   console.log('✅ Base tables created/verified');
@@ -83,6 +96,8 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_teacher_email ON planning_assignments(teacher_email);
     CREATE INDEX IF NOT EXISTS idx_email_ens ON enseignants(email_ens);
     CREATE INDEX IF NOT EXISTS idx_exam_date ON planning_examens(dateExam);
+    CREATE INDEX IF NOT EXISTS idx_souhait_enseignant ON souhaits_enseignants(enseignant);
+    CREATE INDEX IF NOT EXISTS idx_souhait_jour ON souhaits_enseignants(jour);
   `);
 
   console.log('✅ Database initialized successfully');

@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSessionDetails: (sessionId) => ipcRenderer.invoke('get-session-details', sessionId),
   deleteSession: (sessionId) => ipcRenderer.invoke('delete-session', sessionId),
   exportSavedSession: (sessionId) => ipcRenderer.invoke('export-saved-session', sessionId),
+  getWishesByTeacher: (teacherName) => ipcRenderer.invoke('get-wishes-by-teacher', teacherName),
+  getAllWishes: () => ipcRenderer.invoke('get-all-wishes'),
   getDashboardStats: () => ipcRenderer.invoke('get-dashboard-stats'),
   
   // ⭐ NOUVEAU : Permutation d'enseignants
