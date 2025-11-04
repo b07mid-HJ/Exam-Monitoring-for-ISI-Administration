@@ -7,11 +7,11 @@ import { FileUploadCard } from './FileUploadCard';
 interface UploadedFile {
   name: string;
   path: string;
-  type: 'teachers' | 'wishes' | 'exams';
+  type: 'teachers' | 'wishes' | 'exams' | 'credits';
 }
 
 interface FileUploaderProps {
-  onFilesChange: (files: { teachers?: string; wishes?: string; exams?: string }) => void;
+  onFilesChange: (files: { teachers?: string; wishes?: string; exams?: string; credits?: string }) => void;
 }
 
 export function FileUploader({ onFilesChange }: FileUploaderProps) {
@@ -19,6 +19,7 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
     teachers?: UploadedFile;
     wishes?: UploadedFile;
     exams?: UploadedFile;
+    credits?: UploadedFile;
   }>({});
   const [isLoadingFromDb, setIsLoadingFromDb] = useState(false);
   const [showManualUpload, setShowManualUpload] = useState(false);
@@ -79,7 +80,7 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
     }
   };
 
-  const handleSelectFile = async (fileType: 'teachers' | 'wishes' | 'exams') => {
+  const handleSelectFile = async (fileType: 'teachers' | 'wishes' | 'exams' | 'credits') => {
     try {
       console.log('🔍 Sélection du fichier:', fileType);
       const filePath = await (window as any).electronAPI.selectFile(fileType);
@@ -91,7 +92,9 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
           ? 'Enseignants_participants.xlsx'
           : fileType === 'wishes'
             ? 'Souhaits_avec_ids.xlsx'
-            : 'Répartition_SE_dedup.xlsx';
+            : fileType === 'credits'
+              ? 'Credits_session_precedente.xlsx'
+              : 'Répartition_SE_dedup.xlsx';
 
         const dataToSend = {
           fileName: standardFileName,
@@ -132,6 +135,7 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
           teachers: files.teachers?.path,
           wishes: files.wishes?.path,
           exams: files.exams?.path,
+          credits: files.credits?.path,
           [fileType]: filePath
         });
       }
@@ -141,7 +145,7 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
     }
   };  
 
-  const handleRemoveFile = (fileType: 'teachers' | 'wishes' | 'exams') => {
+  const handleRemoveFile = (fileType: 'teachers' | 'wishes' | 'exams' | 'credits') => {
     setFiles(prev => {
       const updated = { ...prev };
       delete updated[fileType];
@@ -152,6 +156,7 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
       teachers: files.teachers?.path,
       wishes: files.wishes?.path,
       exams: files.exams?.path,
+      credits: files.credits?.path,
       [fileType]: undefined
     });
   };
@@ -177,6 +182,13 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
       description: 'Planning des examens',
       required: true,
       alwaysVisible: false
+    },
+    {
+      type: 'credits' as const,
+      label: 'Fichier Crédits',
+      description: 'Crédits de la session précédente (optionnel)',
+      required: false,
+      alwaysVisible: true
     }
   ];
 

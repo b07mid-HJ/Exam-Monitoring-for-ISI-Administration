@@ -182,7 +182,7 @@ ipcMain.handle('save-uploaded-file', async (event, data) => {
 // ============================================================================
 
 // ✅ Modifiez run-python-algorithm
-ipcMain.handle('run-python-algorithm', async (event, { teachersFile, wishesFile, examsFile, gradeHours }) => {
+ipcMain.handle('run-python-algorithm', async (event, { teachersFile, wishesFile, examsFile, creditsFile, gradeHours }) => {
   return new Promise(async (resolve, reject) => {
     try {
       const pythonExec = getPythonExecutable('main');
@@ -208,11 +208,26 @@ ipcMain.handle('run-python-algorithm', async (event, { teachersFile, wishesFile,
       await fs.copyFile(wishesFile, wishesDest);
       await fs.copyFile(examsFile, examsDest);
 
+      // Copier le fichier crédits s'il est fourni (optionnel)
+      if (creditsFile) {
+        const creditsDest = path.join(appDirs.pythonWorkspaceDir, 'Credits_session_precedente.xlsx');
+        await fs.copyFile(creditsFile, creditsDest);
+        console.log('✅ Fichier crédits copié:', creditsDest);
+      } else {
+        console.log('ℹ️  Aucun fichier crédits fourni (optionnel)');
+      }
+
       // Préparer les arguments
       const args = [...pythonExec.args];
       if (gradeHours && Object.keys(gradeHours).length > 0) {
         args.push('--grade-hours');
         args.push(JSON.stringify(gradeHours));
+      }
+      
+      // Ajouter le flag pour le fichier crédits s'il existe
+      if (creditsFile) {
+        args.push('--credits-file');
+        args.push('Credits_session_precedente.xlsx');
       }
 
       const pythonProcess = spawn(pythonExec.command, args, {
