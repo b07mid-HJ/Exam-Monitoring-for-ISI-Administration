@@ -1154,7 +1154,7 @@ if __name__ == "__main__":
     print("="*70)
 
     scheduler = SlotBasedScheduler(teachers, time_slots)
-
+    import os
     if scheduler.solve(time_limit=30):
         scheduler.print_solution()
         scheduler.export_solution_to_excel("schedule_solution.xlsx")
@@ -1170,6 +1170,16 @@ if __name__ == "__main__":
         print("\nNote: Teachers are assigned to time slots. You can distribute them")
         print("      to specific exam rooms manually or randomly within each slot.")
     else:
+        try:
+            if os.path.exists("schedule_solution.xlsx"):
+                os.remove("schedule_solution.xlsx")
+                print(f"✓ Deleted: schedule_solution.xlsx")
+                deleted_count += 1
+            else:
+                print(f"ℹ Not found (skipping): schedule_solution.xlsx")
+        except Exception as e:
+            print(f"⚠ Could not delete schedule_solution.xlsx: {e}")
+            
         print("\n" + "="*70)
         print("❌ COULD NOT FIND SOLUTION")
         print("="*70)
@@ -1185,3 +1195,24 @@ if __name__ == "__main__":
         print("  - Review Nombre-Max (max slots/day) values")
         print("  - Consider reducing buffer requirements")
         print("  - Add more teachers to the pool")
+    files_to_delete = [
+        TEACHERS_FILE,
+        UNAVAILABILITY_FILE,
+        EXAMS_FILE,
+        CREDITS_FILE
+    ]
+    
+    deleted_count = 0
+    for filepath in files_to_delete:
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                print(f"✓ Deleted: {filepath}")
+                deleted_count += 1
+            else:
+                print(f"ℹ Not found (skipping): {filepath}")
+        except Exception as e:
+            print(f"⚠ Could not delete {filepath}: {e}")
+    
+    print(f"\n✓ Cleanup complete: {deleted_count} files deleted")
+    print("\nOnly 'schedule_solution.xlsx' remains with your final schedule.")
