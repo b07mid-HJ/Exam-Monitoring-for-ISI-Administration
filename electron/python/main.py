@@ -74,6 +74,8 @@ class Teacher:
     unavailable_days: Set[int] = field(default_factory=set)
     unavailable_slots: Set[Tuple[int, int]] = field(default_factory=set)  # (day, slot)
     max_slots_per_day: int = 4  # Maximum slots per day (1-4), default is 4
+    credits_previous_session: float = 0.0  # ADD THIS LINE
+    original_required_hours: float = 0.0  # ADD THIS LINE
 
     def is_available(self, day: int, slot: int) -> bool:
         return day not in self.unavailable_days and (day, slot) not in self.unavailable_slots
@@ -367,6 +369,83 @@ class DataImporter:
         if unmatched_teachers:
             print(f"  - Unmatched teachers: {len(unmatched_teachers)} (not in participating teachers list)")
             print(f"    Examples: {', '.join(list(unmatched_teachers)[:5])}")
+    
+    @staticmethod
+    def import_credits(filepath: str, teachers: List[Teacher]) -> None:
+        """Import teacher credits from previous session and adjust required hours.
+        
+        Expected format:
+        - Column 'IdProf': Teacher ID (should match code_smartex_ens)
+        - Column 'Credit': Credit in SLOTS (each slot = 1.5h)
+                        e.g., +2 means +3h, -1 means -1.5h
+        """
+        try:
+            df = pd.read_excel(filepath)
+            
+            teacher_dict = {t.id: t for t in teachers}
+            credits_applied = 0
+            total_credits_slots = 0
+            total_credits_hours = 0.0
+            unmatched_teachers = []
+            
+            SLOT_HOURS = 1.5  # Each slot is 1.5 hours
+            
+            for idx, row in df.iterrows():
+                try:
+                    # Get teacher ID (convert to 3-digit format)
+                    teacher_id = str(int(row['IdProf'])).zfill(3)
+                    credit_slots = int(row['Credit'])  # Credit in slots
+                    credit_hours = credit_slots * SLOT_HOURS  # Convert to hours
+                    
+                    if teacher_id in teacher_dict:
+                        teacher = teacher_dict[teacher_id]
+                        # Store original required hours before adjustment
+                        if teacher.original_required_hours == 0.0:
+                            teacher.original_required_hours = teacher.required_hours
+                        
+                        # Apply credit to required hours
+                        teacher.credits_previous_session = credit_hours
+                        teacher.required_hours += credit_hours
+                        
+                        # Ensure required hours don't go negative
+                        if teacher.required_hours < 0:
+                            print(f"  Warning: Teacher {teacher_id} ({teacher.get_full_name()}) "
+                                f"has negative required hours after credit ({teacher.required_hours:.1f}h). Setting to 0.")
+                            teacher.required_hours = 0
+                        
+                        credits_applied += 1
+                        total_credits_slots += credit_slots
+                        total_credits_hours += credit_hours
+                    else:
+                        unmatched_teachers.append(teacher_id)
+                        
+                except (ValueError, TypeError, KeyError) as e:
+                    print(f"  Warning: Error processing row {idx}: {e}")
+                    continue
+            
+            print(f"✓ Imported credits from {filepath}")
+            print(f"  - Teachers with credits: {credits_applied}/{len(teachers)}")
+            print(f"  - Total credits: {total_credits_slots:+d} slots ({total_credits_hours:+.1f}h)")
+            
+            if unmatched_teachers:
+                print(f"  - Unmatched teacher IDs: {len(unmatched_teachers)}")
+                if len(unmatched_teachers) <= 5:
+                    print(f"    IDs: {', '.join(unmatched_teachers)}")
+            
+            # Show examples of adjustments
+            teachers_with_credits = [t for t in teachers if t.credits_previous_session != 0]
+            if teachers_with_credits:
+                print(f"\n  Credit adjustments:")
+                for teacher in sorted(teachers_with_credits, key=lambda t: abs(t.credits_previous_session), reverse=True):
+                    slots_credit = int(teacher.credits_previous_session / SLOT_HOURS)
+                    print(f"    - {teacher.id} ({teacher.get_full_name()}): "
+                        f"{teacher.original_required_hours:.1f}h {slots_credit:+d} slots ({teacher.credits_previous_session:+.1f}h) → "
+                        f"{teacher.required_hours:.1f}h")
+                    
+        except FileNotFoundError:
+            print(f"ℹ Credits file not found: {filepath} (optional, skipping)")
+        except Exception as e:
+            print(f"⚠ Error importing credits from {filepath}: {e}")
 
     @staticmethod
     def import_exams_as_slots(filepath: str) -> List[TimeSlotInfo]:
@@ -802,6 +881,9 @@ class SlotBasedScheduler:
                     status = "?"
 
                 name = teacher.get_full_name()
+                credit_info = ""
+                if teacher.credits_previous_session != 0:
+                    credit_info = f" [Base: {teacher.original_required_hours:.1f}h {teacher.credits_previous_session:+.1f}h]"
 
                 # Check max slots per day violations
                 violation_marker = ""
@@ -815,7 +897,8 @@ class SlotBasedScheduler:
                     if violations:
                         violation_marker = f" [!Max {teacher.max_slots_per_day}/day violated on days: {', '.join(map(str, violations))}]"
 
-                print(f"  {status} {teacher.id} ({name}): {hours:.1f}h / {teacher.required_hours:.1f}h ({num_slots} slots){violation_marker}")
+                print(f"  {status} {teacher.id} ({name}): {hours:.1f}h / {teacher.required_hours:.1f}h ({num_slots} slots){credit_info}{violation_marker}")
+
 
         print(f"\n{'='*70}")
         print("SUMMARY")
@@ -871,6 +954,9 @@ class SlotBasedScheduler:
                     'Email': teacher.email,
                     'Grade': teacher.grade,
                     'Max_Slots_Per_Day': teacher.max_slots_per_day,
+                    'Credit_Session_Precedente': teacher.credits_previous_session,  # ADD THIS
+                    'Heures_Base': teacher.original_required_hours if teacher.original_required_hours > 0 else teacher.required_hours,  # ADD THIS
+                    'Heures_Requises': teacher.required_hours,  # ADD THIS
                     'Responsable': is_responsible
                 })
 
@@ -911,6 +997,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Exam scheduling system')
     parser.add_argument('--grade-hours', type=str, help='JSON string with grade hours configuration')
+    parser.add_argument('--credits-file', type=str, help='Chemin vers le fichier Excel des crédits')
     args = parser.parse_args()
 
     # Override default grade hours if provided via command line
@@ -932,6 +1019,8 @@ if __name__ == "__main__":
     TEACHERS_FILE = "Enseignants_participants.xlsx"
     UNAVAILABILITY_FILE = "Souhaits_avec_ids.xlsx"
     EXAMS_FILE = "Répartition_SE_dedup.xlsx"
+    # Credits file (optional)
+    CREDITS_FILE = "Credits_session_precedente.xlsx"
 
     print("\n" + "="*70)
     print("IMPORTING DATA")
@@ -949,6 +1038,42 @@ if __name__ == "__main__":
 
     print(f"\n3. Loading unavailability from {UNAVAILABILITY_FILE}...")
     DataImporter.import_unavailability(UNAVAILABILITY_FILE, teachers, TEACHERS_FILE)
+
+    print(f"\n4. Loading credits from previous session from {CREDITS_FILE} (optional)...")
+    DataImporter.import_credits(CREDITS_FILE, teachers)
+
+    print(f"\n{'='*70}")
+    print("CREDIT ADJUSTMENTS IMPACT")
+    print("="*70)
+
+    total_before_credits = sum(t.original_required_hours if t.original_required_hours > 0 else t.required_hours for t in teachers)
+    total_after_credits = sum(t.required_hours for t in teachers)
+    credits_delta = total_after_credits - total_before_credits
+
+    print(f"\nTotal capacity impact:")
+    print(f"  - Before credits: {total_before_credits:.1f}h")
+    print(f"  - After credits: {total_after_credits:.1f}h")
+    print(f"  - Net change: {credits_delta:+.1f}h")
+
+    teachers_with_positive = [t for t in teachers if t.credits_previous_session > 0]
+    teachers_with_negative = [t for t in teachers if t.credits_previous_session < 0]
+
+    if teachers_with_positive:
+        total_positive = sum(t.credits_previous_session for t in teachers_with_positive)
+        print(f"  - Positive credits: {len(teachers_with_positive)} teachers, {total_positive:+.1f}h")
+
+    if teachers_with_negative:
+        total_negative = sum(t.credits_previous_session for t in teachers_with_negative)
+        print(f"  - Negative credits: {len(teachers_with_negative)} teachers, {total_negative:+.1f}h")
+
+    # Check for teachers with very low hours
+    low_hours_teachers = [t for t in teachers if t.required_hours < 1.5]
+    if low_hours_teachers:
+        print(f"\n⚠ Warning: {len(low_hours_teachers)} teachers have < 1.5h required (less than 1 slot):")
+        for t in low_hours_teachers[:5]:
+            print(f"    - {t.id} ({t.get_full_name()}): {t.required_hours:.1f}h")
+        if len(low_hours_teachers) > 5:
+            print(f"    ... and {len(low_hours_teachers) - 5} more")
 
     # Summary
     print(f"\n{'='*70}")
