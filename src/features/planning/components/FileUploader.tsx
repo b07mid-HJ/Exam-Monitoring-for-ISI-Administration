@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Upload, X, Check, Database } from 'lucide-react';
+import { Upload, Check, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { FileUploadCard } from './FileUploadCard';
 
 interface UploadedFile {
   name: string;
@@ -21,6 +21,7 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
     exams?: UploadedFile;
   }>({});
   const [isLoadingFromDb, setIsLoadingFromDb] = useState(false);
+  const [showManualUpload, setShowManualUpload] = useState(false);
 
   const handleLoadFromDatabase = async () => {
     setIsLoadingFromDb(true);
@@ -138,7 +139,9 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
       console.error('❌ Error selecting file:', error);
       toast.error('Erreur lors de la sélection du fichier');
     }
-  };  const handleRemoveFile = (fileType: 'teachers' | 'wishes' | 'exams') => {
+  };  
+
+  const handleRemoveFile = (fileType: 'teachers' | 'wishes' | 'exams') => {
     setFiles(prev => {
       const updated = { ...prev };
       delete updated[fileType];
@@ -158,19 +161,22 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
       type: 'teachers' as const,
       label: 'Fichier Enseignants',
       description: 'Liste des enseignants participants',
-      required: true
+      required: true,
+      alwaysVisible: false
     },
     {
       type: 'wishes' as const,
       label: 'Fichier Souhaits',
       description: 'Contraintes de disponibilité',
-      required: true
+      required: true,
+      alwaysVisible: true
     },
     {
       type: 'exams' as const,
       label: 'Fichier Examens',
       description: 'Planning des examens',
-      required: true
+      required: true,
+      alwaysVisible: false
     }
   ];
 
@@ -180,67 +186,82 @@ export function FileUploader({ onFilesChange }: FileUploaderProps) {
         <div>
           <h3 className="text-lg font-semibold mb-2">Fichiers d'entrée</h3>
           <p className="text-sm text-muted-foreground">
-            Cliquez sur "Charger depuis la DB" pour récupérer les fichiers Enseignants et Examens sauvegardés.
+            Le fichier des souhaits est requis pour continuer.
             <br />
-            Le fichier Souhaits doit être importé manuellement.
+            Vous pouvez également charger les autres fichiers depuis la base de données ou les importer manuellement.
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleLoadFromDatabase}
-          disabled={isLoadingFromDb}
-          className="gap-2"
-        >
-          <Database className="h-4 w-4" />
-          {isLoadingFromDb ? 'Chargement...' : 'Charger depuis la DB'}
-        </Button>
+        <div className="flex items-center gap-4">
+          <Button
+            type="button"
+            onClick={handleLoadFromDatabase}
+            disabled={isLoadingFromDb}
+            className="flex-1"
+            variant="outline"
+          >
+            {isLoadingFromDb ? (
+              <>
+                <Database className="mr-2 h-4 w-4 animate-spin" />
+                Chargement...
+              </>
+            ) : (
+              <>
+                <Database className="mr-2 h-4 w-4" />
+                Charger depuis la base de données
+              </>
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant={showManualUpload ? 'default' : 'outline'}
+            onClick={() => setShowManualUpload(!showManualUpload)}
+            className="flex-1"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            {showManualUpload ? 'Masquer les champs' : 'Insérer les fichiers manuellement'}
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {fileConfigs.map(config => (
-          <Card key={config.type} className="p-4">
-            <div className="space-y-3">
-              <div>
-                <h4 className="font-medium flex items-center gap-2">
-                  {config.label}
-                  {config.required && <span className="text-destructive text-sm">*</span>}
-                </h4>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {config.description}
-                </p>
-              </div>
-
-              {files[config.type] ? (
-                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 rounded-md border border-green-200 dark:border-green-800">
-                  <Check className="h-4 w-4 text-green-600 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-green-900 dark:text-green-100 truncate">
-                      {files[config.type]!.name}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveFile(config.type)}
-                    className="h-8 w-8 p-0"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleSelectFile(config.type)}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Sélectionner
-                </Button>
-              )}
+      <div className="space-y-4">
+        {/* Affichage des champs en fonction de showManualUpload */}
+        {showManualUpload ? (
+          // Afficher les 3 champs côte à côte
+          <div className="grid gap-4 md:grid-cols-3">
+            {fileConfigs.map(config => (
+              <FileUploadCard
+                key={config.type}
+                title={config.label}
+                description={config.description}
+                file={files[config.type]}
+                onSelect={() => handleSelectFile(config.type)}
+                onRemove={() => handleRemoveFile(config.type)}
+                required={config.required}
+              />
+            ))}
+          </div>
+        ) : (
+          // Afficher uniquement le fichier de souhaits centré
+          <div className="flex justify-center">
+            <div className="w-full max-w-md">
+              {fileConfigs
+                .filter(config => config.alwaysVisible)
+                .map(config => (
+                  <FileUploadCard
+                    key={config.type}
+                    title={config.label}
+                    description={config.description}
+                    file={files[config.type]}
+                    onSelect={() => handleSelectFile(config.type)}
+                    onRemove={() => handleRemoveFile(config.type)}
+                    required={config.required}
+                  />
+                ))}
             </div>
-          </Card>
-        ))}
+          </div>
+        )}
       </div>
+      
 
       {files.teachers && files.wishes && files.exams && (
         <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
